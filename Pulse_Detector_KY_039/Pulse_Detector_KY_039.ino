@@ -53,7 +53,7 @@ void loop() {
   float value = alpha * oldValue + (1 - alpha) * rawValue;
   float change = value - oldValue;
   oldValue = value;
-  Serial.printf("Raw: %d, Value: %.2f, Change: %.2f, T_Max: %.2f\n", rawValue, value, change, thresholdMax);
+  //Serial.printf("Raw: %d, Value: %.2f, Change: %.2f, T_Max: %.2f\n", rawValue, value, change, thresholdMax);
 	// To indicate no finger is on the sensor for heartbeat measurment
 	if (change < MIN_CHANGE && (millis() - timeBetweenBeats) >= 2000) {
 		bpm = 0;
@@ -101,4 +101,3 @@ void loop() {
   // Delay to control the sampling rate
   delay(period);
 }
-
