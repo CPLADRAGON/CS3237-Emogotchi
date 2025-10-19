@@ -8,7 +8,7 @@
 
 // This is the minimum change in signal that will be considered a heartbeat.
 // It acts as a noise filter. If still get false readings, try increasing
-#define MIN_CHANGE 7.5
+#define MIN_CHANGE 6.5
 
 float thresholdMax = 0.0;
 // Values for the filter and loop delay
