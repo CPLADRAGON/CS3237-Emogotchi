@@ -8,6 +8,9 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include <cmath> 
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
 
 // PIN
 #define DHTPIN 25
@@ -16,11 +19,22 @@
 #define SOUND_PIN 34
 //#define buzzerPin 8 // 警报信号
 #define MPU_INT_PIN 4 // MPU6050 INT 引脚
+#define HEART_LED_PIN 2 // 新增: 脉搏指示灯（假设为 ESP32 内置 LED）
+#define SCREEN_WIDTH 64  // OLED 宽度
+#define SCREEN_HEIGHT 48 // OLED 高度
 
 // 变量
 #define SAMPLE_SIZE_H 4     // 心率，4次采样
 #define SAMPLE_SIZE_S 50    // 噪音，50ms 采样窗口
 #define NOISE_THRESHOLD 500
+#define MIN_CHANGE 7.5
+#define ALPHA 0.75
+#define HEART_PERIOD_MS 50 // 采样周期 50ms
+
+// --- WiFi & HTTP 常量 ---
+const char* ssid = "Wi-Fi名称";
+const char* password = "Wi-Fi密码";
+const char* serverUrl = "http://somewebsite/api/upload"; 
 
 // MPU6050 寄存器地址和配置
 #define MPU6050_ADDRESS       0x68
@@ -33,10 +47,17 @@
 // 对象化
 DHT dht(DHTPIN, DHTTYPE);
 Adafruit_MPU6050 mpu;
-// Adafruit_SSD1306 display(64, 48, &Wire, -1); 
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1); 
 SemaphoreHandle_t fallDetectedSemaphore;
 SemaphoreHandle_t motionDetectedSemaphore;
 SemaphoreHandle_t i2cMutex; // I2C 互斥锁
+SemaphoreHandle_t sensorDataMutex; // OLED 互斥锁
+
+// 共享传感器数据
+float g_bpm = 0.0;
+float g_temp = 0.0;
+float g_hum = 0.0;
+int g_noise = 0;
 
 // 函数声明
 void Task_HeartRate(void *pvParameters);
@@ -46,10 +67,15 @@ void Task_Motion(void *pvParameters);
 void Task_Alarm(void *pvParameters);
 void IRAM_ATTR MPU_ISR();
 void mpu_write_register(uint8_t reg_addr, uint8_t data);
+void Task_OLED(void *pvParameters);
+void Task_UploadData(void *pvParameters);
+
+
 
 
 void setup() {
   Serial.begin(115200);
+  pinMode(HEART_LED_PIN, OUTPUT);
 //  pinMode(buzzerPin, OUTPUT);
 
   // ----------------------------------------------------
@@ -58,41 +84,44 @@ void setup() {
   motionDetectedSemaphore = xSemaphoreCreateBinary();
   fallDetectedSemaphore = xSemaphoreCreateBinary();
   i2cMutex = xSemaphoreCreateMutex(); // 互斥锁必须创建
+  sensorDataMutex = xSemaphoreCreateMutex(); // 共享数据互斥锁
 
   // 如果任何一个信号量创建失败，打印错误并停止
-  if (motionDetectedSemaphore == NULL || fallDetectedSemaphore == NULL || i2cMutex == NULL) {
+  if (motionDetectedSemaphore == NULL || fallDetectedSemaphore == NULL || i2cMutex == NULL || sensorDataMutex == NULL) {
       Serial.println("FATAL: FreeRTOS object creation failed!");
       while (1) delay(1000); 
   }
   // ----------------------------------------------------
 
-
   dht.begin();
   Wire.begin(); 
 
   // ----------------------------------------------------
-  // --- MPU 初始化：加锁保护 I2C 操作 ---
+  // --- MPU/OLED 初始化: I2C MUX ---
   // ----------------------------------------------------
   
-  if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(500)) == pdTRUE) { // 获取 I2C 锁
-    if (!mpu.begin()) {
-      Serial.println("Failed to find MPU6050 chip");
-      // 注意：这里需要释放锁，否则 loop() 之外的操作会永久持有锁
-      xSemaphoreGive(i2cMutex); 
-      while (1) {
-        delay(10);
-      }
+  if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
+    if(display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+      display.clearDisplay();
+      display.setTextSize(1);
+      display.setTextColor(SSD1306_WHITE);
+      display.setCursor(0,0);
+      display.println("System Ready!");
+      display.display();
+    } else {
+      Serial.println("SSD1306 allocation failed");
     }
     
-    mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
-    mpu.setGyroRange(MPU6050_RANGE_500_DEG);
-    mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
-    
-    // 释放锁。后续的 mpu_write_register 会自行加锁和解锁。
-    xSemaphoreGive(i2cMutex); 
-
+    if (mpu.begin()) {
+      mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+      mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+      mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+    } else {
+       Serial.println("Failed to find MPU6050 chip");
+    }
+    xSemaphoreGive(i2cMutex);
   } else {
-    Serial.println("Setup: Failed to get I2C Mutex for MPU init!");
+    Serial.println("Setup: Failed to get I2C Mutex for init!");
   }
 
 
@@ -106,12 +135,28 @@ void setup() {
 
   // ----------------------------------------------------
 
+  // --- 连接 Wi-Fi ---
+  Serial.print("Connecting to WiFi...");
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("WiFi Connected!");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+
   // 创建任务
+  // Core 1 (实时传感器)
   xTaskCreatePinnedToCore(Task_HeartRate, "HeartRate", 4096, NULL, 3, NULL, 1);
   xTaskCreatePinnedToCore(Task_DHT, "DHT", 4096, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(Task_Sound, "Sound", 2048, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(Task_Motion, "MotionTask", 4096, NULL, 2, NULL, 1);
   xTaskCreatePinnedToCore(Task_Alarm, "AlarmTask", 2048, NULL, 3, NULL, 1);
+  xTaskCreatePinnedToCore(Task_OLED, "OLEDTask", 4096, NULL, 4, NULL, 1);
+  // Core 0 (网络通信)
+  xTaskCreatePinnedToCore(Task_UploadData, "UploadTask", 4096, NULL, 4, NULL, 0);
+}
 }
 
 void loop() {
@@ -138,51 +183,92 @@ void mpu_write_register(uint8_t reg_addr, uint8_t data) {
 
 // 心率计数
 void Task_HeartRate(void *pvParameters) {
-  const TickType_t xFrequency = pdMS_TO_TICKS(10);  // 每10ms
-  TickType_t xLastWakeTime = xTaskGetTickCount();
+    const TickType_t xFrequency = pdMS_TO_TICKS(HEART_PERIOD_MS); // 50ms 周期
+    TickType_t xLastWakeTime = xTaskGetTickCount();
 
-  float reads[SAMPLE_SIZE_H] = {0}, sum = 0, before = 0;
-  int ptr = 0, rise_count = 0;
-  bool rising = false;
-  unsigned long lastBeatTime = 0;
-  float first = 0, second = 0, third = 0;
-
-  while (1) {
-    float reader = analogRead(HEART_PIN);
-
-    // 平滑心率（4次平均）
-    sum -= reads[ptr];
-    sum += reader;
-    reads[ptr] = reader;
-    ptr = (ptr + 1) % 4;
-    float avgValue = sum / 4;
-
-    // 检测上升边沿（5个心跳峰）
-    if (avgValue > before) {
-      rise_count++;
-      if (!rising && rise_count > 5) {
-        rising = true;
-        unsigned long now = millis();
-        if (lastBeatTime > 0) {
-          // 心跳间隔与 BPM 计算
-          float interval = now - lastBeatTime;
-          float avgInterval = (0.4 * interval + 0.3 * second + 0.3 * third);
-          float bpm = 60000.0 / avgInterval;
-          Serial.print("BPM: ");
-          Serial.println(bpm, 1);
-          third = second;
-          second = interval;
-        }
-        lastBeatTime = now;
-      }
-    } else {
-      rising = false;
-      rise_count = 0;
+    // 静态变量：保持状态，只在任务启动时初始化
+    static float oldValue = 500.0;
+    static float thresholdMax = 0.0;
+    static unsigned long bpmMills = 0;
+    static int bpm_count = 0;
+    static unsigned long FirstBpmTime = 0;
+    static unsigned long timeBetweenBeats = 0;
+    
+    // 确保时间变量在第一次运行时被初始化
+    if (bpmMills == 0) {
+        bpmMills = millis();
+        FirstBpmTime = millis();
+        timeBetweenBeats = millis();
     }
-    before = avgValue;
 
-    vTaskDelayUntil(&xLastWakeTime, xFrequency);  // 精准定时
-  }
+    int minDelayBetweenBeats = 400;
+
+    while (1) {
+        int rawValue = analogRead(HEART_PIN);
+
+        // 1. 低通滤波 (平滑信号)
+        float value = ALPHA * oldValue + (1 - ALPHA) * rawValue;
+        float change = value - oldValue;
+        oldValue = value;
+
+        // 2. 无手指检测 (2秒无变化则重置BPM)
+        if (change < MIN_CHANGE && (millis() - timeBetweenBeats) >= 2000) {
+          bpm_count = 0;
+          if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+              g_bpm = 0.0; // 报告 BPM 为 0
+              xSemaphoreGive(sensorDataMutex);
+          }
+        }
+
+        // 3. 脉冲峰值检测 (动态阈值)
+        if ((change >= thresholdMax) && 
+            (change > MIN_CHANGE) && 
+            (change < 30) && // 限制最大变化值以过滤尖锐噪声
+            (millis() > timeBetweenBeats + minDelayBetweenBeats)) {
+            
+            // 首次心跳记录时间
+            if (bpm_count == 0){
+              FirstBpmTime = millis();
+            }
+
+            // 重置动态阈值
+            thresholdMax = change;
+            digitalWrite(HEART_LED_PIN, HIGH);
+
+            // 更新心跳时间
+            timeBetweenBeats = millis();
+            bpm_count++;
+            Serial.print("Heart beat detected!\n");
+        }
+        else {
+            digitalWrite(HEART_LED_PIN, LOW);
+        }
+
+        // 4. 阈值衰减
+        thresholdMax = thresholdMax * 0.97;
+
+        // 5. BPM 周期性报告 (15秒窗口)
+        if (millis() >= bpmMills + 15000) {
+            float calculated_bpm = 0.0;
+            if (bpm_count > 0) {
+                // 计算平均 BPM
+                calculated_bpm = (float)bpm_count * (60000.0 / (timeBetweenBeats - FirstBpmTime)); 
+            }
+            
+            // 安全写入共享数据
+            if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+                g_bpm = calculated_bpm;
+                xSemaphoreGive(sensorDataMutex);
+            }
+
+            Serial.printf("BPM (approx): %.1f\n", calculated_bpm);
+            
+            // 重置计数器和时间戳
+            bpm_count = 0;
+            bpmMills = millis();
+        }
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    }
 }
 
 
@@ -225,6 +311,59 @@ void Task_Sound(void *pvParameters) {
 
     vTaskDelayUntil(&xLastWakeTime, xFrequency);
   }
+}
+
+// OLED显示
+void Task_OLED(void *pvParameters) {
+    const TickType_t xFrequency = pdMS_TO_TICKS(500); // 每500ms
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    
+    float temp_bpm = 0.0;
+    float temp_t = 0.0;
+    float temp_h = 0.0;
+    int temp_n = 0;
+    
+    char lineBuffer[16];
+
+    while (1) {
+        // 1. 读取共享数据 (必须使用 sensorDataMutex 保护)
+        if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            temp_bpm = g_bpm;
+            temp_t = g_temp;
+            temp_h = g_hum;
+            temp_n = g_noise;
+            xSemaphoreGive(sensorDataMutex);
+        }
+
+        // 2. 刷新 OLED 屏幕 (必须使用 i2cMutex 保护)
+        if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+            display.clearDisplay();
+            display.setCursor(0, 0);
+
+            // Line 1: Temp & Hum
+            snprintf(lineBuffer, sizeof(lineBuffer), "T:%.1f H:%.0f%%", temp_t, temp_h);
+            display.println(lineBuffer);
+
+            // Line 2: BPM
+            snprintf(lineBuffer, sizeof(lineBuffer), "BPM:%.0f", temp_bpm);
+            display.println(lineBuffer);
+
+            // Line 3: Noise
+            snprintf(lineBuffer, sizeof(lineBuffer), "Noise:%d", temp_n);
+            display.println(lineBuffer);
+
+            // Line 4: Status (Placeholder for fall/motion status)
+            // Note: MPU status logic needs shared variable update in Task_Motion if needed here.
+            display.println("Status: OK"); 
+
+            display.display();
+            xSemaphoreGive(i2cMutex);
+        } else {
+            Serial.println("OLED Task: Failed to get I2C Mutex!");
+        }
+
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);  // 周期性延迟
+    }
 }
 
 // 动作监测
@@ -295,5 +434,69 @@ void IRAM_ATTR MPU_ISR() {
 
   if (xHigherPriorityTaskWoken == pdTRUE) {
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken); // 立即进行上下文切换
+  }
+}
+
+//数据上传
+  // ----------------------------------------------------
+  // --- 只读取每30s瞬间的global variable ---
+  // ----------------------------------------------------
+void Task_UploadData(void *pvParameters) {
+  const TickType_t xFrequency = pdMS_TO_TICKS(30000); 
+  TickType_t xLastWakeTime = xTaskGetTickCount();
+
+  while(1) {
+    vTaskDelayUntil(&xLastWakeTime, xFrequency); //每30s
+
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("UploadTask: WiFi disconnected. Skipping upload.");
+      continue; 
+    }
+
+    // 准备 JSON 数据
+    StaticJsonDocument<256> doc; // 创建一个 JSON 文档
+    String payload; // 用于存储序列化后的 JSON 字符串
+
+    // 从全局变量读取数据
+  // ----------------------------------------------------
+  // --- 只读取每30s瞬间的global variable ---
+  // ----------------------------------------------------
+    if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+        doc["bpm"] = g_bpm;
+        doc["temperature"] = g_temp;
+        doc["humidity"] = g_hum;
+        doc["noise"] = g_noise;
+        xSemaphoreGive(sensorDataMutex); // 立即释放
+    } else {
+        Serial.println("UploadTask: Failed to get data mutex. Skipping upload.");
+        continue;
+    }
+
+    //将 JSON 文档序列化为字符串
+    serializeJson(doc, payload);
+    Serial.print("Uploading payload: ");
+    Serial.println(payload);
+
+    //发起 HTTP POST 请求
+    HTTPClient http;
+    http.begin(serverUrl);
+    http.addHeader("Content-Type", "application/json"); 
+    int httpCode = http.POST(payload);
+
+    //检查服务器响应
+    if (httpCode > 0) {
+      if (httpCode == HTTP_CODE_OK) { // HTTP 200
+        String response = http.getString();
+        Serial.println("Upload successful! Server response:");
+        Serial.println(response);
+      } else {
+        Serial.printf("Upload failed, HTTP error code: %d\n", httpCode);
+      }
+    } else {
+      Serial.printf("Upload failed, HTTPClient error: %s\n", http.errorToString(httpCode).c_str());
+    }
+
+    //释放 HTTPClient 资源
+    http.end();   //结束对话
   }
 }
