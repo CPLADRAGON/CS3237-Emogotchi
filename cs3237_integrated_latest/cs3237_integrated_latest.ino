@@ -32,9 +32,9 @@
 #define HEART_PERIOD_MS 50 // 采样周期 50ms
 
 // --- WiFi & HTTP 常量 ---
-const char* ssid = "05400";
-const char* password = "180098123";
-const char* serverUrl = "http://192.168.88.8:5000/api/upload"; 
+const char* ssid = "CPLADRAGON";
+const char* password = "10293847";
+const char* serverUrl = "http://172.20.10.4:5000/api/upload"; 
 
 // MPU6050 寄存器地址和配置
 #define MPU6050_ADDRESS       0x68

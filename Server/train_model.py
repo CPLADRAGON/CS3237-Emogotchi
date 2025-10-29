@@ -11,7 +11,7 @@ MODEL_SAVE_PATH = 'stress_model.pkl'
 # Define the features (sensor readings) and the target (stress level)
 # --- IMPORTANT: Adjust these column names to match your CSV file exactly ---
 # Example features, ADD ALL YOUR SENSOR COLUMNS
-feature_cols = ['hrv', 'noise_db', 'movement', 'light_lux', 'temperature_c']
+feature_cols = ['bpm', 'temperature', 'humidity', 'noise', ]
 target_col = 'Emotion'  # The column with 'Relaxed', 'Neutral', 'Stressed' labels
 
 # --- Load Data ---

@@ -17,17 +17,13 @@ latest_prediction = "N/A"  # Variable to store the latest prediction
 
 # --- Load the Pre-trained Model ---
 MODEL_PATH = 'Server\stress_model.pkl'
-# Define feature columns using names EXACTLY as seen during training
-# Based on the previous error message
+# --- FIX: Update feature columns to match your training data ---
 feature_cols_expected_by_model = [
-    'hrv',          # Example: This might come from rmssd or sdnn
-    'light_lux',    # Example: This might come from a calibrated light percentage
-    # Example: This might come from MPU6050 data (not currently sent)
-    'movement',
-    'noise_db',     # Example: This might come from the 'noise' amplitude
-    'temperature_c',  # Example: This might come from 'temperature'
-    # Add ALL other columns your model was trained on, in the correct order
-    'humidity'      # Example: Assuming humidity was also used in training
+    'bpm',
+    'temperature',
+    'humidity',
+    'noise',
+    # Add any other feature columns EXACTLY as named in your training dataset
 ]
 
 try:
@@ -45,20 +41,10 @@ except Exception as e:
 # MQTT_BROKER_HOST = "localhost"
 # MQTT_BROKER_PORT = 1883
 # MQTT_COMMAND_TOPIC = "emogotchi/window/command"
-# STRESS_LEVEL_TO_TRIGGER = "Stressed"
+# STRESS_LEVEL_TO_TRIGGER = "Sad" # Or "Stressed" depending on your model output
 # mqtt_client = None
 # def setup_mqtt():
-#     global mqtt_client
-#     try:
-#         mqtt_client = mqtt.Client(client_id="flask_server_ml")
-#         mqtt_client.connect(MQTT_BROKER_HOST, MQTT_BROKER_PORT, 60)
-#         mqtt_client.loop_start()
-#         print("MQTT Client configured and connected.")
-#         return True
-#     except Exception as e:
-#         print(f"Could not connect to MQTT Broker: {e}")
-#         mqtt_client = None
-#         return False
+#     # ... (MQTT setup function if needed) ...
 # mqtt_connected = setup_mqtt()
 # --- End Optional MQTT ---
 
@@ -109,30 +95,19 @@ def receive_data():
             # --- Map incoming JSON keys to the feature names expected by the model ---
             input_data_mapped = {}
 
-            # --- YOU NEED TO ADD/ADJUST MAPPINGS BELOW based on your ESP32 JSON and model needs ---
-            # Example Mappings:
-            input_data_mapped['temperature_c'] = data.get(
-                'temperature', 0)  # Use 0 if 'temperature' key is missing
-            # Use 0 if 'humidity' key is missing
+            # Map directly since most names match
+            input_data_mapped['bpm'] = data.get('bpm', 0)
+            input_data_mapped['temperature'] = data.get('temperature', 0)
             input_data_mapped['humidity'] = data.get('humidity', 0)
-            # Use 0 if 'noise' key is missing
-            input_data_mapped['noise_db'] = data.get('noise', 0)
+            # --- FIX: Map incoming 'noise' to model's 'noise_db' ---
+            input_data_mapped['noise'] = data.get('noise', 0)
 
-            # HRV Mapping (Choose one or combine rmssd/sdnn as needed by your model)
-            # Example: Using RMSSD. Change if model expects SDNN or something else. Use 0 if missing.
-            input_data_mapped['hrv'] = data.get('rmssd', 0)
+            # --- Add mappings for any OTHER features your model expects ---
+            # e.g., if your model also uses HRV:
+            # input_data_mapped['rmssd'] = data.get('rmssd', 0)
+            # input_data_mapped['sdnn'] = data.get('sdnn', 0)
 
-            # Light Mapping (Assuming ESP sends 'light_percent'. Use 0 if missing.)
-            input_data_mapped['light_lux'] = data.get('light_percent', 0)
-
-            # Movement Mapping (Currently missing from ESP data. Sending 0)
-            # You'll need to send relevant MPU data (e.g., std dev of acceleration) from ESP later
-            input_data_mapped['movement'] = data.get(
-                'movement_metric', 0)  # Use 0 for now
-
-            # --- Make sure ALL columns in feature_cols_expected_by_model are mapped ---
-
-            # Fill any remaining expected columns that weren't mapped with a default (e.g., 0)
+            # --- Fill any remaining expected columns that weren't mapped with a default ---
             for col in feature_cols_expected_by_model:
                 if col not in input_data_mapped:
                     print(
@@ -146,7 +121,8 @@ def receive_data():
 
             # 2. Make prediction
             prediction = model.predict(input_df)
-            prediction_result = prediction[0]  # Get the prediction string
+            # Get the prediction string (e.g., "Sad", "Neutral", "Happy")
+            prediction_result = prediction[0]
 
             print(f"Prediction: {prediction_result}")
 
