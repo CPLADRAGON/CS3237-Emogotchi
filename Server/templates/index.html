@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emogotchi Sensor Data</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+
+        .card {
+            background-color: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        h1,
+        h2 {
+            color: #333;
+        }
+
+        span {
+            font-weight: bold;
+            color: #007BFF;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th,
+        td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background-color: #e9e9e9;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Emogotchi - Live Sensor Data</h1>
+
+    <div class="card">
+        <h2>Latest Reading (<span id="latest-timestamp">--:--:--</span>)</h2>
+        <p>BPM: <span id="latest-bpm">--</span></p>
+        <p>Temperature: <span id="latest-temp">--</span> °C</p>
+        <p>Humidity: <span id="latest-hum">--</span> %</p>
+        <p>Noise Level: <span id="latest-noise">--</span></p>
+        <p>Predicted Stress: <span id="latest-prediction">N/A</span></p>
+    </div>
+
+    <div class="card">
+        <h2>Recent History (Last <span id="history-count">0</span> readings)</h2>
+        <table id="history-table">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>BPM</th>
+                    <th>Temp (°C)</th>
+                    <th>Humidity (%)</th>
+                    <th>Noise</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // Function to fetch data and update the page
+        async function updateData() {
+            try {
+                const response = await fetch('/data'); // Fetch from our Flask /data endpoint
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+
+                // Update Latest Data
+                const latest = data.latest || {}; // Handle case where no data received yet
+                document.getElementById('latest-timestamp').textContent = latest.timestamp || '--:--:--';
+                document.getElementById('latest-bpm').textContent = latest.bpm !== undefined ? latest.bpm.toFixed(1) : '--';
+                document.getElementById('latest-temp').textContent = latest.temperature !== undefined ? latest.temperature.toFixed(1) : '--';
+                document.getElementById('latest-hum').textContent = latest.humidity !== undefined ? latest.humidity.toFixed(0) : '--';
+                document.getElementById('latest-noise').textContent = latest.noise !== undefined ? latest.noise : '--';
+                // Inside updateData function, after updating other fields:
+                document.getElementById('latest-prediction').textContent = data.prediction || 'N/A';
+                // Update History Table
+                const history = data.history || [];
+                const tableBody = document.getElementById('history-table').querySelector('tbody');
+                tableBody.innerHTML = ''; // Clear existing rows
+
+                document.getElementById('history-count').textContent = history.length;
+
+                // Add rows for each history entry (newest first)
+                history.reverse().forEach(entry => {
+                    const row = tableBody.insertRow();
+                    row.insertCell().textContent = entry.timestamp || '--:--:--';
+                    row.insertCell().textContent = entry.bpm !== undefined ? entry.bpm.toFixed(1) : '--';
+                    row.insertCell().textContent = entry.temperature !== undefined ? entry.temperature.toFixed(1) : '--';
+                    row.insertCell().textContent = entry.humidity !== undefined ? entry.humidity.toFixed(0) : '--';
+                    row.insertCell().textContent = entry.noise !== undefined ? entry.noise : '--';
+                });
+
+            } catch (error) {
+                console.error("Failed to fetch sensor data:", error);
+                // Optionally display an error message on the page
+            }
+        }
+
+        // Fetch data immediately when the page loads
+        updateData();
+
+        // Automatically refresh the data every 5 seconds (5000 milliseconds)
+        setInterval(updateData, 5000); 
+    </script>
+</body>
+
+</html>

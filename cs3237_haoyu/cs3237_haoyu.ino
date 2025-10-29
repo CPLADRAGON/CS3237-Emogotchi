@@ -20,7 +20,7 @@
 //#define buzzerPin 8 // 警报信号
 #define MPU_INT_PIN 4 // MPU6050 INT 引脚
 #define HEART_LED_PIN 2 // 新增: 脉搏指示灯（假设为 ESP32 内置 LED）
-#define SCREEN_WIDTH 64  // OLED 宽度
+#define SCREEN_WIDTH 64 // OLED 宽度
 #define SCREEN_HEIGHT 48 // OLED 高度
 
 // 变量
@@ -32,9 +32,9 @@
 #define HEART_PERIOD_MS 50 // 采样周期 50ms
 
 // --- WiFi & HTTP 常量 ---
-const char* ssid = "Wi-Fi名称";
-const char* password = "Wi-Fi密码";
-const char* serverUrl = "http://somewebsite/api/upload"; 
+const char* ssid = "05400";
+const char* password = "180098123";
+const char* serverUrl = "http://192.168.88.8:5000/api/upload"; 
 
 // MPU6050 寄存器地址和配置
 #define MPU6050_ADDRESS       0x68
@@ -52,6 +52,7 @@ SemaphoreHandle_t fallDetectedSemaphore;
 SemaphoreHandle_t motionDetectedSemaphore;
 SemaphoreHandle_t i2cMutex; // I2C 互斥锁
 SemaphoreHandle_t sensorDataMutex; // OLED 互斥锁
+SemaphoreHandle_t adcMutex; // <-- FIX 1: Re-add the ADC mutex
 
 // 共享传感器数据
 float g_bpm = 0.0;
@@ -85,9 +86,11 @@ void setup() {
   fallDetectedSemaphore = xSemaphoreCreateBinary();
   i2cMutex = xSemaphoreCreateMutex(); // 互斥锁必须创建
   sensorDataMutex = xSemaphoreCreateMutex(); // 共享数据互斥锁
+  adcMutex = xSemaphoreCreateMutex(); // <-- FIX 1: Create the ADC mutex
 
   // 如果任何一个信号量创建失败，打印错误并停止
-  if (motionDetectedSemaphore == NULL || fallDetectedSemaphore == NULL || i2cMutex == NULL || sensorDataMutex == NULL) {
+  // <-- FIX 1: Add adcMutex to the check
+  if (motionDetectedSemaphore == NULL || fallDetectedSemaphore == NULL || i2cMutex == NULL || sensorDataMutex == NULL || adcMutex == NULL) {
       Serial.println("FATAL: FreeRTOS object creation failed!");
       while (1) delay(1000); 
   }
@@ -157,7 +160,7 @@ void setup() {
   // Core 0 (网络通信)
   xTaskCreatePinnedToCore(Task_UploadData, "UploadTask", 4096, NULL, 4, NULL, 0);
 }
-}
+
 
 void loop() {
 
@@ -204,7 +207,17 @@ void Task_HeartRate(void *pvParameters) {
     int minDelayBetweenBeats = 400;
 
     while (1) {
-        int rawValue = analogRead(HEART_PIN);
+        // <-- FIX 1: Declare rawValue here
+        int rawValue; 
+        
+        // <-- FIX 1: Protect ADC read with mutex
+        if (xSemaphoreTake(adcMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            rawValue = analogRead(HEART_PIN);
+            xSemaphoreGive(adcMutex);
+        } else {
+            Serial.println("Heart task failed to get ADC mutex");
+            rawValue = oldValue; // Use old value on failure
+        }
 
         // 1. 低通滤波 (平滑信号)
         float value = ALPHA * oldValue + (1 - ALPHA) * rawValue;
@@ -280,6 +293,16 @@ void Task_DHT(void *pvParameters) {
     float h = dht.readHumidity();
     float t = dht.readTemperature();
     Serial.printf("Temp: %.1f C, Hum: %.1f %%\n", t, h);
+    
+    // --- FIX: ADD THIS BLOCK ---
+    // Safely update the global variables
+    if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+      if (!isnan(t)) g_temp = t; // Only update if the reading was valid
+      if (!isnan(h)) g_hum = h;
+      xSemaphoreGive(sensorDataMutex);
+    } // <-- FIX 2: Mutex is released here
+
+    // <-- FIX 2: Delay is now OUTSIDE the mutex block
     vTaskDelayUntil(&xLastWakeTime, xFrequency);
   }
 }
@@ -295,7 +318,17 @@ void Task_Sound(void *pvParameters) {
     int signalMin = 1023;
 
     while (millis() - startTime < SAMPLE_SIZE_S) {
-      int sample = analogRead(SOUND_PIN);
+      int sample;
+      
+      // <-- FIX 1: Protect ADC read with mutex
+      if (xSemaphoreTake(adcMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+          sample = analogRead(SOUND_PIN);
+          xSemaphoreGive(adcMutex);
+      } else {
+          Serial.println("Sound task failed to get ADC mutex");
+          sample = 1023; // Default value
+      }
+      
       if (sample < 1024) {
         if (sample > signalMax) signalMax = sample;
         else if (sample < signalMin) signalMin = sample;
@@ -303,12 +336,19 @@ void Task_Sound(void *pvParameters) {
     }
 
     int amplitude = signalMax - signalMin;
-    Serial.printf("Noise amplitude: %d\n", amplitude);
+    //Serial.printf("Noise amplitude: %d\n", amplitude);
 
     if (amplitude > NOISE_THRESHOLD) {
       Serial.println("Loud sound detected!");
     }
+    
+    // --- FIX: ADD THIS BLOCK ---
+    if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+      g_noise = amplitude;
+      xSemaphoreGive(sensorDataMutex);
+    } // <-- FIX 2: Mutex is released here
 
+    // <-- FIX 2: Delay is now OUTSIDE the mutex block
     vTaskDelayUntil(&xLastWakeTime, xFrequency);
   }
 }
@@ -362,7 +402,7 @@ void Task_OLED(void *pvParameters) {
             Serial.println("OLED Task: Failed to get I2C Mutex!");
         }
 
-        vTaskDelayUntil(&xLastWakeTime, xFrequency);  // 周期性延迟
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);   // 周期性延迟
     }
 }
 
@@ -383,7 +423,7 @@ void Task_Motion(void *pvParameters) {
           Wire.beginTransmission(MPU6050_ADDRESS);
           Wire.write(MPU6050_INT_STATUS);
           Wire.endTransmission(false); // 发送重启条件
-          Wire.requestFrom(MPU6050_ADDRESS, 1);
+          Wire.requestFrom((uint8_t)MPU6050_ADDRESS, (uint8_t)1);
           if (Wire.available()) {
               status = Wire.read();
               Serial.printf("MPU INT Status Cleared: 0x%X\n", status);
