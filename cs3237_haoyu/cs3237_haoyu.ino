@@ -15,7 +15,7 @@
 #include <PubSubClient.h>
 
 // PIN
-#define LDR_PIN 16
+#define LDR_PIN 33
 #define DHTPIN 25
 #define DHTTYPE DHT11
 #define HEART_PIN 32
@@ -66,6 +66,7 @@ PubSubClient client(espClient);
 SemaphoreHandle_t fallDetectedSemaphore;
 SemaphoreHandle_t motionDetectedSemaphore;
 SemaphoreHandle_t i2cMutex; // I2C 互斥锁
+SemaphoreHandle_t adcMutex;
 SemaphoreHandle_t sensorDataMutex; // OLED 互斥锁
 
 // 共享传感器数据
@@ -100,10 +101,11 @@ void setup() {
   motionDetectedSemaphore = xSemaphoreCreateBinary();
   fallDetectedSemaphore = xSemaphoreCreateBinary();
   i2cMutex = xSemaphoreCreateMutex(); // 互斥锁必须创建
+  adcMutex = xSemaphoreCreateMutex();
   sensorDataMutex = xSemaphoreCreateMutex(); // 共享数据互斥锁
 
   // 如果任何一个信号量创建失败，打印错误并停止
-  if (motionDetectedSemaphore == NULL || fallDetectedSemaphore == NULL || i2cMutex == NULL || sensorDataMutex == NULL) {
+  if (motionDetectedSemaphore == NULL || fallDetectedSemaphore == NULL || i2cMutex == NULL || sensorDataMutex == NULL || adcMutex == NULL) {
       Serial.println("FATAL: FreeRTOS object creation failed!");
       while (1) delay(1000); 
   }
@@ -193,6 +195,7 @@ void setup() {
 
   // 创建任务
   // Core 1 (实时传感器)
+  xTaskCreatePinnedToCore(Task_LDR, "LDR", 2048, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(Task_HeartRate, "HeartRate", 4096, NULL, 3, NULL, 1);
   xTaskCreatePinnedToCore(Task_DHT, "DHT", 4096, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(Task_Sound, "Sound", 2048, NULL, 1, NULL, 1);
@@ -467,11 +470,19 @@ void Task_DHT(void *pvParameters) {
 }
 
 void Task_LDR(void *pvParameters) {
-  const TickType_t xFrequency = pdMS_TO_TICKS(20000); // 每20s
+  const TickType_t xFrequency = pdMS_TO_TICKS(20000); // 20 seconds
   TickType_t xLastWakeTime = xTaskGetTickCount();
+  
   while (1) {
-    float l = analogRead(LDR_PIN);
+    float l = 0.0; // Default to 0
 
+    if (xSemaphoreTake(adcMutex, pdMS_TO_TICKS(60)) == pdTRUE) {
+      l = analogRead(LDR_PIN);
+      xSemaphoreGive(adcMutex);
+    } else {
+      Serial.println("LDR Task: Failed to get ADC Mutex!");
+      l = -1; // Or some other error value
+    }
     if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
       g_ldr = l;
       xSemaphoreGive(sensorDataMutex);
