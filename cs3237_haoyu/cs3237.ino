@@ -14,8 +14,10 @@
 #include "ESP32MQTTClient.h"
 #include "esp_idf_version.h"
 #include "esp_event.h"
+#include <PubSubClient.h>
 
 // PIN
+#define LDR_PIN 16
 #define DHTPIN 25
 #define DHTTYPE DHT11
 #define HEART_PIN 32
@@ -42,8 +44,8 @@ const char* password = "12345678";
 //const char* serverUrl = "http://somewebsite/api/upload"; //<---------------------------------------------------------------------------------------------  弃用http
 
 // --- MQTT 常量 ---
-const char* mqtt_server = "mqtt://server.com:1883";
-const char* mqtt_topic = "主题"; 
+const char* mqtt_server = "178.128.94.113";
+const char* mqtt_topic = "esp32/sensor_data"; 
 
 // MPU6050 寄存器地址和配置
 #define MPU6050_ADDRESS       0x68
@@ -58,7 +60,10 @@ const char* mqtt_topic = "主题";
 // 对象化
 DHT dht(DHTPIN, DHTTYPE);
 Adafruit_MPU6050 mpu;
-ESP32MQTTClient mqttClient;
+//ESP32MQTTClient mqttClient;
+
+WiFiClient espClient;
+PubSubClient client(espClient);
 //Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1); // <------------------------------------------------------------------------------  移除 OLED
 SemaphoreHandle_t fallDetectedSemaphore;
 SemaphoreHandle_t motionDetectedSemaphore;
@@ -73,6 +78,8 @@ int g_noise_peak = 0;
 double g_noise_sum = 0.0; // 噪声总和 
 int g_noise_sample_count = 0; // 噪声采样次数
 volatile bool g_mqttConnected = false;
+float g_ldr = 0.0;
+int g_in_motion = 1;
 
 // 函数声明
 void Task_HeartRate(void *pvParameters);
@@ -82,10 +89,14 @@ void Task_Motion(void *pvParameters);
 void Task_Alarm(void *pvParameters);
 void IRAM_ATTR MPU_ISR();
 void mpu_write_register(uint8_t reg_addr, uint8_t data);
-void Task_MqttPublish(void *pvParameters);
+//void Task_MqttPublish(void *pvParameters);
 //void Task_OLED(void *pvParameters); // <------------------------------------------------------------------------------  移除 OLED
+void Task_LDR(void *pvParameters);
+void Task_UploadData(void *pvParameters); // <-- ADDED
+void Task_MQTT_Loop(void *pvParameters);  // <-- ADDED
+void reconnectMQTT();                     // <-- ADDED
 
-
+/*
 void onMqttConnect(esp_mqtt_client_handle_t client)
 {
     if (mqttClient.isMyTurn(client)) 
@@ -98,7 +109,7 @@ void onMqttConnect(esp_mqtt_client_handle_t client)
                              { log_i("%s: %s", topic.c_str(), payload.c_str()); });
     }
 }
-
+*/
 
 void setup() {
   Serial.begin(115200);
@@ -181,7 +192,7 @@ void setup() {
 
 
 
-
+/*
   // --- 配置 MQTT 客户端对象 ---
     mqttClient.enableDebuggingMessages();
     mqttClient.setURI(mqtt_server);
@@ -191,8 +202,8 @@ void setup() {
         log_i("Global callback: %s: %s", topic.c_str(), payload.c_str());
     });
     mqttClient.loopStart();
-
-
+*/
+ client.setServer(mqtt_server, 1883);
 
 
 
@@ -208,9 +219,12 @@ void setup() {
   xTaskCreatePinnedToCore(Task_Motion, "MotionTask", 4096, NULL, 2, NULL, 1);
   xTaskCreatePinnedToCore(Task_Alarm, "AlarmTask", 2048, NULL, 3, NULL, 1);
   // xTaskCreatePinnedToCore(Task_OLED, "OLEDTask", 4096, NULL, 4, NULL, 1);  <------------------------------------------------------------------------------  移除 OLED
+
   // Core 0 (网络通信)
   // xTaskCreatePinnedToCore(Task_UploadData, "UploadTask", 4096, NULL, 4, NULL, 0); 
-  xTaskCreatePinnedToCore(Task_MqttPublish, "MqttPublish", 4096, NULL, 1, NULL, 0);
+  //xTaskCreatePinnedToCore(Task_MqttPublish, "MqttPublish", 4096, NULL, 1, NULL, 0);
+  xTaskCreatePinnedToCore(Task_UploadData, "Upload", 4096, NULL, 2, NULL, 0); // <-- ADDED
+  xTaskCreatePinnedToCore(Task_MQTT_Loop, "MQTTLoop", 4096, NULL, 2, NULL, 0); // <-- ADDED
 
 }
 
@@ -227,7 +241,7 @@ void loop() {
 
 
 
-
+/*
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0)
 esp_err_t handleMQTT(esp_mqtt_event_handle_t event)
 {
@@ -241,12 +255,96 @@ void handleMQTT(void *handler_args, esp_event_base_t base, int32_t event_id, voi
     mqttClient.onEventCallback(event);
 }
 #endif
+*/
+
+void reconnectMQTT() {
+  while (!client.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    // Attempt to connect
+    // You can change the client ID if needed
+    if (client.connect("esp32Client")) {
+      Serial.println("connected");
+      // You can also subscribe to topics here if needed
+      // client.subscribe("inTopic");
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      // Wait 5 seconds before retrying
+      vTaskDelay(pdMS_TO_TICKS(5000));
+    }
+  }
+}
+
+void Task_MQTT_Loop(void *pvParameters) {
+  while(1) {
+    if (WiFi.status() == WL_CONNECTED) {
+      if (!client.connected()) {
+        reconnectMQTT();
+      }
+      client.loop(); // Handle MQTT housekeeping
+    } else {
+      Serial.println("MQTT Loop: WiFi disconnected.");
+    }
+    // Check connection status frequently
+    vTaskDelay(pdMS_TO_TICKS(500));
+  }
+}
 
 
+void Task_UploadData(void *pvParameters) {
+  const TickType_t xFrequency = pdMS_TO_TICKS(16000); // 16 seconds
+  TickType_t xLastWakeTime = xTaskGetTickCount();
+  
+  char payload[512];
+  StaticJsonDocument<512> doc;
 
+  while(1) {
+    vTaskDelayUntil(&xLastWakeTime, xFrequency);
 
+    float noise_avg_calculated = 0.0; 
 
+    if (WiFi.status() != WL_CONNECTED || !client.connected()) {
+      Serial.println("UploadTask: WiFi or MQTT disconnected. Skipping upload.");
+      continue;
+    }
 
+    // --- 创建 JSON 对象 ---
+    if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+      doc.clear(); 
+      doc["bpm"] = g_bpm;
+      doc["temperature"] = g_temp;
+      doc["humidity"] = g_hum;
+      //doc["noise"] = g_noise_peak;
+      doc["ldr"] = g_ldr;
+      doc["in_motion"] = g_in_motion; 
+
+          if (g_noise_sample_count > 0) {
+              noise_avg_calculated = (float)(g_noise_sum / g_noise_sample_count);
+          }
+          
+          doc["noise"] = noise_avg_calculated;
+          g_noise_peak = 0;
+          g_noise_sum = 0.0;
+          g_noise_sample_count = 0;
+          g_in_motion = 0;
+      
+      xSemaphoreGive(sensorDataMutex);
+    } else {
+      Serial.println("UploadTask: Failed to get sensor mutex. Skipping.");
+      continue;
+    }
+
+    serializeJson(doc, payload, sizeof(payload));
+    
+    Serial.print("Uploading payload: ");
+    Serial.println(payload);
+    
+    if (!client.publish(mqtt_topic, payload)) {
+        Serial.println("MQTT Publish failed!");
+    }
+  }
+}
 
 
 
@@ -383,6 +481,22 @@ void Task_DHT(void *pvParameters) {
     }
 
     Serial.printf("Temp: %.1f C, Hum: %.1f %%\n", t, h);
+    vTaskDelayUntil(&xLastWakeTime, xFrequency);
+  }
+}
+
+void Task_LDR(void *pvParameters) {
+  const TickType_t xFrequency = pdMS_TO_TICKS(20000); // 每20s
+  TickType_t xLastWakeTime = xTaskGetTickCount();
+  while (1) {
+    float l = analogRead(LDR_PIN);
+
+    if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+      g_ldr = l;
+      xSemaphoreGive(sensorDataMutex);
+    }
+
+    Serial.printf("light: %.1f lu\n", l);
     vTaskDelayUntil(&xLastWakeTime, xFrequency);
   }
 }
@@ -527,6 +641,12 @@ void Task_Motion(void *pvParameters) {
       if (accTotal > 10.0) { // 检测到高 G 撞击
         Serial.println("IMPACT DETECTED after MPU Interrupt!");
         xSemaphoreGive(fallDetectedSemaphore);
+        if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+            g_in_motion = 1; // 设置标志
+            xSemaphoreGive(sensorDataMutex);
+        } else {
+            Serial.println("MotionTask: Failed to get sensor mutex for status update!");
+        }
       } else if (accTotal < 3.0) {
           Serial.println("Potential Free Fall (Low G) detected via Interrupt.");
       }
@@ -558,6 +678,7 @@ void IRAM_ATTR MPU_ISR() {
   }
 }
 
+/*
 //MQTT上传
 void Task_MqttPublish(void *pvParameters) {
     const TickType_t xFrequency = pdMS_TO_TICKS(PUBLISH_INTERVAL_MS);
@@ -609,6 +730,7 @@ void Task_MqttPublish(void *pvParameters) {
         }
     }
 }
+*/
 
 // <------------------------------------------------------------------------------  HTTP
 //数据上传
