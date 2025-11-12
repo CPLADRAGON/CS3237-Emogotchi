@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, send_from_directory
 import json
 from collections import deque
 import joblib
@@ -187,6 +187,20 @@ def init_csv():
                 print(f"Created new CSV file: {CSV_FILE_PATH}")
             except Exception as e:
                 print(f"Error creating CSV file: {e}")
+
+
+@app.route('/download')
+def download_csv():
+    try:
+        # Assumes server.py is in the same directory as sensor_data.csv
+        # If not, adjust the directory path.
+        return send_from_directory(
+            directory='.',
+            path='sensor_data.csv',
+            as_attachment=True
+        )
+    except FileNotFoundError:
+        return "Error: File not found.", 404
 
 
 # --- Run Flask ---

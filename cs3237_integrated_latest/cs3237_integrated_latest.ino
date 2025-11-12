@@ -272,24 +272,33 @@ void Task_Sound(void *pvParameters) {
   TickType_t xLastWakeTime = xTaskGetTickCount();
 
   while (1) {
-    unsigned long startTime = millis();
+    unsigned long startTime;
     int signalMax = 0;
     int signalMin = 1023;
 
-    while (millis() - startTime < SAMPLE_SIZE_S) {
-      int sample;
-      if (xSemaphoreTake(adcMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-          sample = analogRead(SOUND_PIN);
-          xSemaphoreGive(adcMutex);
-      } else {
-          Serial.println("Sound task failed to get ADC mutex");
-          sample = 1023; 
+    // --- FIX: TAKE MUTEX BEFORE THE LOOP ---
+    // Wait up to 20ms to get the lock.
+    if (xSemaphoreTake(adcMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+      
+      startTime = millis();
+      while (millis() - startTime < SAMPLE_SIZE_S) {
+        // We now own the mutex, so we can read freely
+        int sample = analogRead(SOUND_PIN);
+        
+        if (sample < 1024) {
+          if (sample > signalMax) signalMax = sample;
+          else if (sample < signalMin) signalMin = sample;
+        }
       }
       
-      if (sample < 1024) {
-        if (sample > signalMax) signalMax = sample;
-        else if (sample < signalMin) signalMin = sample;
-      }
+      // --- FIX: GIVE MUTEX AFTER THE LOOP ---
+      xSemaphoreGive(adcMutex);
+
+    } else {
+      Serial.println("Sound task FAILED to get ADC mutex.");
+      // Skip this cycle if we couldn't get the ADC
+      vTaskDelayUntil(&xLastWakeTime, xFrequency);
+      continue;
     }
 
     int amplitude = signalMax - signalMin;
@@ -299,17 +308,15 @@ void Task_Sound(void *pvParameters) {
       Serial.println("Loud sound detected!");
     }
     
-    // --- MODIFIED: Write to global variable ---
+    // Write to global variable
     if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
       g_noise = amplitude;
       xSemaphoreGive(sensorDataMutex);
     } 
-    // ---
 
     vTaskDelayUntil(&xLastWakeTime, xFrequency);
   }
 }
-
 // ----------------------------------------------------
 // --- ADDED: New Task for LDR Polling ---
 // ----------------------------------------------------
