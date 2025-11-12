@@ -50,23 +50,20 @@ SemaphoreHandle_t i2cMutex;
 SemaphoreHandle_t adcMutex;
 SemaphoreHandle_t sensorDataMutex; // <-- ADDED: To protect global data
 
-// --- ADDED: Global Shared Data ---
-float g_bpm = 0.0;
-float g_temp = 0.0;
-float g_hum = 0.0;
-int g_noise = 0;
-int g_ldr = 0;
-int g_in_motion = 0; // <-- ADDED: 0 = not in motion, 1 = in motion
+// --- MODIFIED: Global Shared Data (now accumulators) ---
+float g_bpm = 0.0; // BPM is calculated in its own task, so it's not an accumulator
 
-// --- REMOVED: Old MPU struct ---
-/*
-struct MPUData {
-  float accX, accY, accZ;
-  float gyroX, gyroY, gyroZ;
-  float mpuTemp;
-};
-MPUData g_mpuData;
-*/
+// Accumulators for averaging
+float g_temp_accumulator = 0.0;
+int   g_temp_count = 0;
+float g_hum_accumulator = 0.0;
+int   g_hum_count = 0;
+long  g_noise_accumulator = 0;
+int   g_noise_count = 0;
+long  g_ldr_accumulator = 0;
+int   g_ldr_count = 0;
+int   g_motion_accumulator = 0; // Will store sum of motion states (0 or 1)
+int   g_motion_count = 0;
 // ---
 
 // 函数声明
@@ -176,7 +173,7 @@ void reconnectMQTT() {
 // --- 任务定义 (Task Definitions) ---
 // ----------------------------------------------------
 
-// 心率计数
+// 心率计数 (This task is unchanged, as it already calculates BPM over a window)
 void Task_HeartRate(void *pvParameters) {
     const TickType_t xFrequency = pdMS_TO_TICKS(HEART_PERIOD_MS);
     TickType_t xLastWakeTime = xTaskGetTickCount();
@@ -196,7 +193,7 @@ void Task_HeartRate(void *pvParameters) {
 
     while (1) {
         int rawValue; 
-        if (xSemaphoreTake(adcMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        if (xSemaphoreTake(adcMutex, pdMS_TO_TICKS(60)) == pdTRUE) { // Increased timeout
             rawValue = analogRead(HEART_PIN);
             xSemaphoreGive(adcMutex);
         } else {
@@ -231,7 +228,7 @@ void Task_HeartRate(void *pvParameters) {
             
             // --- MODIFIED: Write to global variable ---
             if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-                g_bpm = calculated_bpm;
+                g_bpm = calculated_bpm; // We only write the final BPM
                 xSemaphoreGive(sensorDataMutex);
             }
             // ---
@@ -255,10 +252,16 @@ void Task_DHT(void *pvParameters) {
     float t = dht.readTemperature();
     Serial.printf("Temp: %.1f C, Hum: %.1f %%\n", t, h);
     
-    // --- MODIFIED: Write to global variable ---
+    // --- MODIFIED: Add to accumulator instead of overwriting ---
     if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-      if (!isnan(t)) g_temp = t; 
-      if (!isnan(h)) g_hum = h;
+      if (!isnan(t)) {
+        g_temp_accumulator += t;
+        g_temp_count++;
+      }
+      if (!isnan(h)) {
+        g_hum_accumulator += h;
+        g_hum_count++;
+      }
       xSemaphoreGive(sensorDataMutex);
     } 
     // ---
@@ -276,13 +279,10 @@ void Task_Sound(void *pvParameters) {
     int signalMax = 0;
     int signalMin = 1023;
 
-    // --- FIX: TAKE MUTEX BEFORE THE LOOP ---
-    // Wait up to 20ms to get the lock.
-    if (xSemaphoreTake(adcMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+    if (xSemaphoreTake(adcMutex, pdMS_TO_TICKS(60)) == pdTRUE) { // Increased timeout
       
       startTime = millis();
       while (millis() - startTime < SAMPLE_SIZE_S) {
-        // We now own the mutex, so we can read freely
         int sample = analogRead(SOUND_PIN);
         
         if (sample < 1024) {
@@ -290,13 +290,10 @@ void Task_Sound(void *pvParameters) {
           else if (sample < signalMin) signalMin = sample;
         }
       }
-      
-      // --- FIX: GIVE MUTEX AFTER THE LOOP ---
       xSemaphoreGive(adcMutex);
 
     } else {
       Serial.println("Sound task FAILED to get ADC mutex.");
-      // Skip this cycle if we couldn't get the ADC
       vTaskDelayUntil(&xLastWakeTime, xFrequency);
       continue;
     }
@@ -308,15 +305,18 @@ void Task_Sound(void *pvParameters) {
       Serial.println("Loud sound detected!");
     }
     
-    // Write to global variable
+    // --- MODIFIED: Add to accumulator instead of overwriting ---
     if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-      g_noise = amplitude;
+      g_noise_accumulator += amplitude;
+      g_noise_count++;
       xSemaphoreGive(sensorDataMutex);
     } 
+    // ---
 
     vTaskDelayUntil(&xLastWakeTime, xFrequency);
   }
 }
+
 // ----------------------------------------------------
 // --- ADDED: New Task for LDR Polling ---
 // ----------------------------------------------------
@@ -326,22 +326,21 @@ void Task_LDR(void *pvParameters) {
   
   while(1) {
     int ldrValue;
-    // Use ADC mutex to read
     if (xSemaphoreTake(adcMutex, pdMS_TO_TICKS(60)) == pdTRUE) {
       ldrValue = analogRead(LDR_PIN);
       xSemaphoreGive(adcMutex);
     } else {
       Serial.println("LDR Task: Failed to get ADC Mutex.");
-      ldrValue = -1; // Indicate error
+      ldrValue = -1; 
     }
 
-    // Use Sensor Data mutex to write
-    if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
-      g_ldr = ldrValue;
+    // --- MODIFIED: Add to accumulator instead of overwriting ---
+    if (ldrValue != -1 && xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+      g_ldr_accumulator += ldrValue;
+      g_ldr_count++;
       xSemaphoreGive(sensorDataMutex);
-    } else {
-      Serial.println("LDR Task: Failed to get Sensor Mutex.");
-    }
+    } 
+    // ---
     
     Serial.printf("LDR Value: %d\n", ldrValue);
     vTaskDelayUntil(&xLastWakeTime, xFrequency);
@@ -355,6 +354,7 @@ void Task_MPU(void *pvParameters) {
   sensors_event_t a, g, temp;
 
   while (1) {
+    int current_motion_state = 0;
     // Protect I2C read with mutex
     if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
       mpu.getEvent(&a, &g, &temp);
@@ -362,10 +362,12 @@ void Task_MPU(void *pvParameters) {
 
       // --- MODIFIED: Calculate motion state ---
       float totalGyro = abs(g.gyro.x) + abs(g.gyro.y) + abs(g.gyro.z);
-      int current_motion_state = (totalGyro > MOTION_THRESHOLD) ? 1 : 0;
+      current_motion_state = (totalGyro > MOTION_THRESHOLD) ? 1 : 0;
       
+      // --- MODIFIED: Add to accumulator instead of overwriting ---
       if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-        g_in_motion = current_motion_state;
+        g_motion_accumulator += current_motion_state; // Add 0 or 1
+        g_motion_count++;
         xSemaphoreGive(sensorDataMutex);
       }
       // ---
@@ -395,21 +397,18 @@ void Task_MQTT_Loop(void *pvParameters) {
     } else {
       Serial.println("MQTT Loop: WiFi disconnected.");
     }
-    // Check connection status frequently
     vTaskDelay(pdMS_TO_TICKS(500));
   }
 }
 
 // ----------------------------------------------------
-// --- ADDED: Task for Uploading JSON Data via MQTT ---
+// --- MODIFIED: Task_UploadData to calculate averages ---
 // ----------------------------------------------------
 void Task_UploadData(void *pvParameters) {
   const TickType_t xFrequency = pdMS_TO_TICKS(16000); // 16 seconds
   TickType_t xLastWakeTime = xTaskGetTickCount();
   
-  // Allocate buffer for JSON payload
   char payload[512];
-  // Create JSON document
   StaticJsonDocument<512> doc;
 
   while(1) {
@@ -420,28 +419,67 @@ void Task_UploadData(void *pvParameters) {
       continue;
     }
 
-    // --- Create JSON Object ---
-    // Lock mutex to safely read all global variables
+    // --- Create local variables to hold averages ---
+    float bpm_val = 0.0;
+    float temp_avg = 0.0;
+    float hum_avg = 0.0;
+    float noise_avg = 0.0;
+    float ldr_avg = 0.0;
+
+    // --- Lock mutex, copy data, and RESET accumulators ---
     if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-      doc.clear(); // Clear previous JSON data
-      doc["bpm"] = g_bpm;
-      doc["temperature"] = g_temp;
-      doc["humidity"] = g_hum;
-      doc["noise"] = g_noise;
-      doc["ldr"] = g_ldr;
-      doc["in_motion"] = g_in_motion; 
+      
+      // Copy BPM (it's already calculated)
+      bpm_val = g_bpm; 
+      
+      // Calculate averages and copy, then reset
+      if (g_temp_count > 0) {
+        temp_avg = g_temp_accumulator / g_temp_count;
+        g_temp_accumulator = 0;
+        g_temp_count = 0;
+      }
+      if (g_hum_count > 0) {
+        hum_avg = g_hum_accumulator / g_hum_count;
+        g_hum_accumulator = 0;
+        g_hum_count = 0;
+      }
+      if (g_noise_count > 0) {
+        noise_avg = (float)g_noise_accumulator / g_noise_count;
+        g_noise_accumulator = 0;
+        g_noise_count = 0;
+      }
+      if (g_ldr_count > 0) {
+        ldr_avg = (float)g_ldr_accumulator / g_ldr_count;
+        g_ldr_accumulator = 0;
+        g_ldr_count = 0;
+      }
+      if (g_motion_count > 0) {
+        motion_avg = (float)g_motion_accumulator / g_motion_count; // e.g., 8 / 16 = 0.5 (50% of time)
+        g_motion_accumulator = 0;
+        g_motion_count = 0;
+      }
 
       // Release the mutex
       xSemaphoreGive(sensorDataMutex);
+      
     } else {
       Serial.println("UploadTask: Failed to get sensor mutex. Skipping.");
       continue;
     }
 
+    // --- Create JSON Object with averaged values ---
+    doc.clear(); 
+    doc["bpm"] = bpm_val;
+    doc["temperature"] = temp_avg;
+    doc["humidity"] = hum_avg;
+    doc["noise"] = noise_avg;
+    doc["ldr"] = ldr_avg;
+    doc["in_motion"] = motion_avg; // Send as 0-100%
+
     // Serialize JSON to string
     serializeJson(doc, payload, sizeof(payload));
     
-    Serial.print("Uploading payload: ");
+    Serial.print("Uploading AVERAGED payload: ");
     Serial.println(payload);
     
     // Publish to MQTT topic

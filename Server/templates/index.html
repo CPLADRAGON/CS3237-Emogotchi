@@ -10,7 +10,30 @@
             font-family: sans-serif;
             padding: 20px;
             background-color: #f4f4f4;
+            margin: 0;
+            /* Added to remove default margin */
+            padding-top: 60px;
+            /* Added padding to avoid overlap with header */
         }
+
+        /* --- ADDED: Style for the top-right corner --- */
+        #device-header {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            padding: 10px;
+            background-color: #e9e9e9;
+            border-radius: 8px;
+            font-size: 0.9em;
+            color: #555;
+        }
+
+        #device-name {
+            font-weight: bold;
+            color: #007BFF;
+        }
+
+        /* ------------------------------------------ */
 
         .card {
             background-color: white;
@@ -50,6 +73,11 @@
 </head>
 
 <body>
+
+    <div id="device-header">
+        User: <span id="device-name">--</span>
+    </div>
+
     <h1>Emogotchi - Live Sensor Data</h1>
 
     <div class="card">
@@ -58,31 +86,11 @@
         <p>Temperature: <span id="latest-temp">--</span> °C</p>
         <p>Humidity: <span id="latest-hum">--</span> %</p>
         <p>Noise Level: <span id="latest-noise">--</span></p>
-        <!-- ADDED LDR and Motion -->
-        <p>LDR (Light): <span id="latest-ldr">--</span></p>
-        <p>Motion: <span id="latest-motion">--</span></p>
-
         <p>Predicted Stress: <span id="latest-prediction">N/A</span></p>
     </div>
 
     <div class="card">
         <h2>Recent History (Last <span id="history-count">0</span> readings)</h2>
-        <table id="history-table">
-            <thead>
-                <tr>
-                    <th>Time</th>
-                    <th>BPM</th>
-                    <th>Temp (°C)</th>
-                    <th>Humidity (%)</th>
-                    <th>Noise</th>
-                    <!-- ADDED LDR and Motion -->
-                    <th>LDR</th>
-                    <th>Motion</th>
-                </tr>
-            </thead>
-            <tbody>
-            </tbody>
-        </table>
     </div>
 
     <script>
@@ -95,29 +103,24 @@
                 }
                 const data = await response.json();
 
-                // Update Latest Data
+                // --- Update Latest Data ---
                 const latest = data.latest || {}; // Handle case where no data received yet
                 document.getElementById('latest-timestamp').textContent = latest.timestamp || '--:--:--';
+
+                // --- THIS IS THE NEW LINE ---
+                // It finds the 'device-name' span and updates it
+                document.getElementById('device-name').textContent = latest.device_name || 'Unknown';
+                // --------------------------
+
                 document.getElementById('latest-bpm').textContent = latest.bpm !== undefined ? latest.bpm.toFixed(1) : '--';
                 document.getElementById('latest-temp').textContent = latest.temperature !== undefined ? latest.temperature.toFixed(1) : '--';
                 document.getElementById('latest-hum').textContent = latest.humidity !== undefined ? latest.humidity.toFixed(0) : '--';
-                document.getElementById('latest-noise').textContent = latest.noise !== undefined ? latest.noise : '--';
-
-                // --- ADDED LDR and Motion ---
-                document.getElementById('latest-ldr').textContent = latest.ldr !== undefined ? latest.ldr : '--';
-
-                let motionText = '--';
-                if (latest.in_motion === 0) {
-                    motionText = 'Still';
-                } else if (latest.in_motion === 1) {
-                    motionText = 'Moving';
-                }
-                document.getElementById('latest-motion').textContent = motionText;
-                // ---
+                // Note: Updated noise to toFixed(1) in case you send averages
+                document.getElementById('latest-noise').textContent = latest.noise !== undefined ? latest.noise.toFixed(1) : '--';
 
                 document.getElementById('latest-prediction').textContent = data.prediction || 'N/A';
 
-                // Update History Table
+                // --- Update History Table ---
                 const history = data.history || [];
                 const tableBody = document.getElementById('history-table').querySelector('tbody');
                 tableBody.innerHTML = ''; // Clear existing rows
@@ -128,27 +131,18 @@
                 history.reverse().forEach(entry => {
                     const row = tableBody.insertRow();
                     row.insertCell().textContent = entry.timestamp || '--:--:--';
+                    // --- ADDED device_name to table (optional but good) ---
+                    row.insertCell().textContent = entry.device_name || 'Unknown';
+                    // ---------------------------------------------------
                     row.insertCell().textContent = entry.bpm !== undefined ? entry.bpm.toFixed(1) : '--';
                     row.insertCell().textContent = entry.temperature !== undefined ? entry.temperature.toFixed(1) : '--';
                     row.insertCell().textContent = entry.humidity !== undefined ? entry.humidity.toFixed(0) : '--';
-                    row.insertCell().textContent = entry.noise !== undefined ? entry.noise : '--';
-
-                    // --- ADDED LDR and Motion ---
-                    row.insertCell().textContent = entry.ldr !== undefined ? entry.ldr : '--';
-
-                    let historyMotionText = '--';
-                    if (entry.in_motion === 0) {
-                        historyMotionText = 'Still';
-                    } else if (entry.in_motion === 1) {
-                        historyMotionText = 'Moving';
-                    }
-                    row.insertCell().textContent = historyMotionText;
-                    // ---
+                    // Note: Updated noise to toFixed(1)
+                    row.insertCell().textContent = entry.noise !== undefined ? entry.noise.toFixed(1) : '--';
                 });
 
             } catch (error) {
                 console.error("Failed to fetch sensor data:", error);
-                // Optionally display an error message on the page
             }
         }
 
