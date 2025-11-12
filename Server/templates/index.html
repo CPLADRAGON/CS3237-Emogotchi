@@ -81,7 +81,6 @@
         <p>Temperature: <span id="latest-temp">--</span> °C</p>
         <p>Humidity: <span id="latest-hum">--</span> %</p>
         <p>Noise Level: <span id="latest-noise">--</span></p>
-
         <p>LDR (Light): <span id="latest-ldr">--</span></p>
         <p>In Motion: <span id="latest-motion">--</span></p>
         <p>Predicted Stress: <span id="latest-prediction">N/A</span></p>
@@ -126,13 +125,8 @@
                 document.getElementById('latest-temp').textContent = latest.temperature !== undefined ? latest.temperature.toFixed(1) : '--';
                 document.getElementById('latest-hum').textContent = latest.humidity !== undefined ? latest.humidity.toFixed(0) : '--';
                 document.getElementById('latest-noise').textContent = latest.noise !== undefined ? latest.noise.toFixed(1) : '--';
-
-                // --- ADDED THESE TWO LINES ---
                 document.getElementById('latest-ldr').textContent = latest.ldr !== undefined ? latest.ldr.toFixed(0) : '--';
-                // Display 'Yes' or 'No' for motion
                 document.getElementById('latest-motion').textContent = latest.in_motion === 1 ? 'Yes' : (latest.in_motion === 0 ? 'No' : '--');
-                // ---------------------------
-
                 document.getElementById('latest-prediction').textContent = data.prediction || 'N/A';
 
                 // --- Update History Table ---
@@ -147,17 +141,15 @@
                 history.reverse().forEach(entry => {
                     const row = tableBody.insertRow();
                     row.insertCell().textContent = entry.timestamp || '--:--:--';
-                    // row.insertCell().textContent = entry.device_name || 'Unknown'; (Removed as requested)
                     row.insertCell().textContent = entry.bpm !== undefined ? entry.bpm.toFixed(1) : '--';
                     row.insertCell().textContent = entry.temperature !== undefined ? entry.temperature.toFixed(1) : '--';
-                    Services
+
+                    // --- THIS BLOCK IS NOW FIXED ---
                     row.insertCell().textContent = entry.humidity !== undefined ? entry.humidity.toFixed(0) : '--';
                     row.insertCell().textContent = entry.noise !== undefined ? entry.noise.toFixed(1) : '--';
-
-                    // --- ADDED THESE TWO LINES ---
                     row.insertCell().textContent = entry.ldr !== undefined ? entry.ldr.toFixed(0) : '--';
                     row.insertCell().textContent = entry.in_motion === 1 ? 'Yes' : 'No';
-                    // ---------------------------
+                    // -----------------------------
                 });
 
             } catch (error) {

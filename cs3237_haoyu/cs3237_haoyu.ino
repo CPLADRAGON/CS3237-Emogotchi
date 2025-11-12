@@ -36,8 +36,10 @@
 #define PUBLISH_INTERVAL_MS 30000 // 发布间隔c
 
 // --- WiFi & HTTP 常量 ---
-const char* ssid = "CPLADRAGON";
-const char* password = "10293847";
+// const char* ssid = "CPLADRAGON";
+// const char* password = "10293847";
+const char* ssid = "05400";
+const char* password = "180098123";
 const char* device_name = "Boyu";
 
 // --- MQTT 常量 ---
