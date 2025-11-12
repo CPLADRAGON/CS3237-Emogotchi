@@ -58,6 +58,10 @@
         <p>Temperature: <span id="latest-temp">--</span> °C</p>
         <p>Humidity: <span id="latest-hum">--</span> %</p>
         <p>Noise Level: <span id="latest-noise">--</span></p>
+        <!-- ADDED LDR and Motion -->
+        <p>LDR (Light): <span id="latest-ldr">--</span></p>
+        <p>Motion: <span id="latest-motion">--</span></p>
+
         <p>Predicted Stress: <span id="latest-prediction">N/A</span></p>
     </div>
 
@@ -71,6 +75,9 @@
                     <th>Temp (°C)</th>
                     <th>Humidity (%)</th>
                     <th>Noise</th>
+                    <!-- ADDED LDR and Motion -->
+                    <th>LDR</th>
+                    <th>Motion</th>
                 </tr>
             </thead>
             <tbody>
@@ -95,8 +102,21 @@
                 document.getElementById('latest-temp').textContent = latest.temperature !== undefined ? latest.temperature.toFixed(1) : '--';
                 document.getElementById('latest-hum').textContent = latest.humidity !== undefined ? latest.humidity.toFixed(0) : '--';
                 document.getElementById('latest-noise').textContent = latest.noise !== undefined ? latest.noise : '--';
-                // Inside updateData function, after updating other fields:
+
+                // --- ADDED LDR and Motion ---
+                document.getElementById('latest-ldr').textContent = latest.ldr !== undefined ? latest.ldr : '--';
+
+                let motionText = '--';
+                if (latest.in_motion === 0) {
+                    motionText = 'Still';
+                } else if (latest.in_motion === 1) {
+                    motionText = 'Moving';
+                }
+                document.getElementById('latest-motion').textContent = motionText;
+                // ---
+
                 document.getElementById('latest-prediction').textContent = data.prediction || 'N/A';
+
                 // Update History Table
                 const history = data.history || [];
                 const tableBody = document.getElementById('history-table').querySelector('tbody');
@@ -112,6 +132,18 @@
                     row.insertCell().textContent = entry.temperature !== undefined ? entry.temperature.toFixed(1) : '--';
                     row.insertCell().textContent = entry.humidity !== undefined ? entry.humidity.toFixed(0) : '--';
                     row.insertCell().textContent = entry.noise !== undefined ? entry.noise : '--';
+
+                    // --- ADDED LDR and Motion ---
+                    row.insertCell().textContent = entry.ldr !== undefined ? entry.ldr : '--';
+
+                    let historyMotionText = '--';
+                    if (entry.in_motion === 0) {
+                        historyMotionText = 'Still';
+                    } else if (entry.in_motion === 1) {
+                        historyMotionText = 'Moving';
+                    }
+                    row.insertCell().textContent = historyMotionText;
+                    // ---
                 });
 
             } catch (error) {
