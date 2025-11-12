@@ -19,7 +19,7 @@
 #define DHTTYPE DHT11
 #define HEART_PIN 32
 #define SOUND_PIN 34
-#define LDR_PIN 35 // <-- ADDED: LDR Pin. (Note: Pin 16 is not an ADC pin, using 35 instead)
+#define LDR_PIN 35 
 
 // 变量
 #define SAMPLE_SIZE_S 50    // 噪音，50ms 采样窗口
@@ -327,7 +327,7 @@ void Task_LDR(void *pvParameters) {
   while(1) {
     int ldrValue;
     // Use ADC mutex to read
-    if (xSemaphoreTake(adcMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+    if (xSemaphoreTake(adcMutex, pdMS_TO_TICKS(60)) == pdTRUE) {
       ldrValue = analogRead(LDR_PIN);
       xSemaphoreGive(adcMutex);
     } else {
