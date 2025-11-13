@@ -44,7 +44,7 @@ except Exception as e:
 # --- CSV Logging Setup ---
 CSV_FILE_PATH = 'sensor_data.csv'
 CSV_HEADERS = ['timestamp', 'bpm', 'temperature',
-               'humidity', 'noise', 'ldr', 'in_motion']
+               'humidity', 'noise', 'ldr', 'in_motion', 'happiness_score']
 csv_lock = threading.Lock()
 
 # --- MQTT Configuration ---
@@ -176,6 +176,7 @@ def on_message(client, userdata, msg):
             # 5. Get 0-100 score from LSTM
             score = get_happiness_score(sequence)
             latest_happiness_score = score  # Save for dashboard
+            data['happiness_score'] = score
 
             # 6. Map score to emotion
             prediction_result = map_score_to_emotion(score)

@@ -6,14 +6,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Emogotchi Dashboard</title>
 
-    <link rel="preconnect" href="https.googleapis.com">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <style>
-        /* 3. Added CSS Variables for a Dark Mode Theme */
         :root {
             --bg-color: #1a1b26;
             /* Dark background */
@@ -75,16 +76,13 @@
             color: var(--accent-blue);
         }
 
-        /* 4. New "Latest Metrics" Grid Layout */
         .latest-grid {
             display: grid;
-            /* Creates a responsive grid that fits as many 150px cards as it can */
             grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
             gap: 15px;
             margin-bottom: 30px;
         }
 
-        /* 5. New "Metric Card" Styling */
         .metric-card {
             background-color: var(--card-color);
             border-radius: 12px;
@@ -116,13 +114,93 @@
 
         .metric-value {
             font-size: 2.2em;
-            /* Big, bold number */
             font-weight: 700;
             margin-top: 10px;
             color: var(--text-color);
         }
 
-        /* 6. Dynamic Styling for Specific Cards */
+        /* Special card for the chart */
+        .chart-card {
+            /* Make it span more columns on larger screens */
+            grid-column: 1 / -1;
+            /* Default to full width */
+            background-color: var(--card-color);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border-color);
+            margin-bottom: 30px;
+        }
+
+        /* Responsive grid layout */
+        @media (min-width: 900px) {
+            .latest-grid {
+                /* 4 columns on medium screens */
+                grid-template-columns: repeat(4, 1fr);
+            }
+
+            .chart-card {
+                /* Span 2 columns */
+                grid-column: span 2;
+                grid-row: span 2;
+                /* Take up more vertical space */
+            }
+
+            .metric-card#stress-card {
+                grid-column: 3;
+                grid-row: 1;
+            }
+
+            .metric-card#happiness-card {
+                grid-column: 4;
+                grid-row: 1;
+            }
+
+            .metric-card#bpm-card {
+                grid-column: 3;
+                grid-row: 2;
+            }
+
+            .metric-card#motion-card {
+                grid-column: 4;
+                grid-row: 2;
+            }
+        }
+
+        @media (min-width: 1200px) {
+            .latest-grid {
+                /* 5 columns on large screens */
+                grid-template-columns: repeat(5, 1fr);
+            }
+
+            .chart-card {
+                /* Span 3 columns */
+                grid-column: span 3;
+                grid-row: span 2;
+            }
+
+            .metric-card#stress-card {
+                grid-column: 4;
+                grid-row: 1;
+            }
+
+            .metric-card#happiness-card {
+                grid-column: 5;
+                grid-row: 1;
+            }
+
+            .metric-card#bpm-card {
+                grid-column: 4;
+                grid-row: 2;
+            }
+
+            .metric-card#motion-card {
+                grid-column: 5;
+                grid-row: 2;
+            }
+        }
+
+
         .metric-card.stressed {
             background-color: #4a2f2f;
             border-color: var(--accent-orange);
@@ -149,7 +227,7 @@
             color: var(--accent-blue);
         }
 
-        /* Color icons */
+        /* Icon colors */
         .fa-heartbeat {
             color: #f7768e;
         }
@@ -178,8 +256,11 @@
             color: #9d7cd8;
         }
 
+        .fa-smile {
+            color: var(--accent-green);
+        }
 
-        /* 7. Fancier History Card & Table */
+
         .history-card {
             background-color: var(--card-color);
             border-radius: 12px;
@@ -187,7 +268,6 @@
             box-shadow: var(--shadow);
             border: 1px solid var(--border-color);
             overflow-x: auto;
-            /* For small screens */
         }
 
         table {
@@ -205,7 +285,6 @@
 
         th {
             background-color: #2e344e;
-            /* Header background */
             font-weight: 600;
             color: var(--text-dim);
         }
@@ -220,7 +299,6 @@
 
         tbody tr:hover {
             background-color: #2e344e;
-            /* Row hover */
         }
     </style>
 </head>
@@ -240,6 +318,11 @@
 
         <div class="latest-grid">
 
+            <div class="chart-card">
+                <h3 style="color: var(--text-dim); margin-bottom: 15px;">Emotion Trend (0-100)</h3>
+                <canvas id="happinessChart"></canvas>
+            </div>
+
             <div class="metric-card" id="stress-card">
                 <div class="metric-header">
                     <i class="fas fa-brain"></i>
@@ -248,12 +331,28 @@
                 <div class="metric-value" id="latest-prediction">N/A</div>
             </div>
 
-            <div class="metric-card">
+            <div class="metric-card" id="happiness-card">
+                <div class="metric-header">
+                    <i class="fas fa-smile"></i>
+                    <span>Happiness</span>
+                </div>
+                <div class="metric-value" id="latest-happiness-score">--</div>
+            </div>
+
+            <div class="metric-card" id="bpm-card">
                 <div class="metric-header">
                     <i class="fas fa-heartbeat"></i>
                     <span>BPM</span>
                 </div>
                 <div class="metric-value" id="latest-bpm">--</div>
+            </div>
+
+            <div class="metric-card" id="motion-card">
+                <div class="metric-header">
+                    <i class="fas fa-walking"></i>
+                    <span>In Motion</span>
+                </div>
+                <div class="metric-value" id="latest-motion">--</div>
             </div>
 
             <div class="metric-card">
@@ -288,14 +387,6 @@
                 <div class="metric-value" id="latest-ldr">--</div>
             </div>
 
-            <div class="metric-card" id="motion-card">
-                <div class="metric-header">
-                    <i class="fas fa-walking"></i>
-                    <span>In Motion</span>
-                </div>
-                <div class="metric-value" id="latest-motion">--</div>
-            </div>
-
         </div>
         <div class="history-card">
             <h2>Recent History (Last <span id="history-count">0</span> readings)</h2>
@@ -317,7 +408,7 @@
         </div>
     </div>
     <script>
-        // 9. Updated JS to match new element IDs and add dynamic classes
+        // 6. MODIFIED JAVASCRIPT
 
         // Cache DOM elements
         const elements = {
@@ -330,11 +421,63 @@
             ldr: document.getElementById('latest-ldr'),
             motion: document.getElementById('latest-motion'),
             prediction: document.getElementById('latest-prediction'),
+            happinessScore: document.getElementById('latest-happiness-score'), // Added
             historyCount: document.getElementById('history-count'),
             tableBody: document.getElementById('history-table').querySelector('tbody'),
             stressCard: document.getElementById('stress-card'),
             motionCard: document.getElementById('motion-card')
         };
+
+        // --- ADDED: Chart.js Global Variable ---
+        let happinessChart = null;
+
+        // --- ADDED: Function to initialize the chart ---
+        function initChart() {
+            const ctx = document.getElementById('happinessChart').getContext('2d');
+
+            // Gradient fill
+            const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+            gradient.addColorStop(0, 'rgba(115, 218, 202, 0.6)');
+            gradient.addColorStop(1, 'rgba(115, 218, 202, 0.05)');
+
+            happinessChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [], // Will be filled with timestamps
+                    datasets: [{
+                        label: 'Happiness Score',
+                        data: [], // Will be filled with scores
+                        borderColor: 'rgba(115, 218, 202, 1)', // --accent-green
+                        backgroundColor: gradient,
+                        fill: true,
+                        tension: 0.4, // Makes the line smooth
+                        pointRadius: 2,
+                        pointBackgroundColor: 'rgba(115, 218, 202, 1)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100, // Score is 0-100
+                            ticks: { color: '#a9b1d6' },
+                            grid: { color: '#414868' }
+                        },
+                        x: {
+                            ticks: { color: '#a9b1d6' },
+                            grid: { display: false }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false // Hide the legend
+                        }
+                    }
+                }
+            });
+        }
 
         async function updateData() {
             try {
@@ -355,7 +498,7 @@
                 elements.temp.textContent = latest.temperature !== undefined ? `${latest.temperature.toFixed(1)}°C` : '--';
                 elements.hum.textContent = latest.humidity !== undefined ? `${latest.humidity.toFixed(0)}%` : '--';
                 elements.noise.textContent = latest.noise !== undefined ? latest.noise.toFixed(1) : '--';
-                elements.ldr.textContent = latest.ldr !== undefined ? latest.ldr.toFixed(0) : '--';
+G               elements.ldr.textContent = latest.ldr !== undefined ? latest.ldr.toFixed(0) : '--';
 
                 const motionText = latest.in_motion === 1 ? 'Yes' : (latest.in_motion === 0 ? 'No' : '--');
                 elements.motion.textContent = motionText;
@@ -363,15 +506,15 @@
                 const predictionText = data.prediction || 'N/A';
                 elements.prediction.textContent = predictionText;
 
+                // --- ADDED: Update happiness score card ---
+                elements.happinessScore.textContent = data.happiness_score !== undefined ? data.happiness_score.toFixed(1) : '--';
+
                 // --- DYNAMIC CLASS STYLING ---
-                // Style stress card
                 if (predictionText === 'Sad' || predictionText === 'Stressed') {
                     elements.stressCard.classList.add('stressed');
                 } else {
                     elements.stressCard.classList.remove('stressed');
                 }
-
-                // Style motion card
                 if (latest.in_motion === 1) {
                     elements.motionCard.classList.add('in-motion');
                 } else {
@@ -380,12 +523,16 @@
 
                 // --- Update History Table ---
                 const history = data.history || [];
-                elements.tableBody.innerHTML = ''; // Clear existing rows
+                elements.tableBody.innerHTML = '';
                 elements.historyCount.textContent = history.length;
 
-                // Add rows for each history entry (newest first)
-                history.reverse().forEach(entry => {
-                    const row = elements.tableBody.insertRow();
+                // We will also use history to update the chart
+                const chartLabels = [];
+                const chartData = [];
+
+                history.forEach(entry => {
+                    // Update table
+                    const row = elements.tableBody.insertRow(0); // Insert at the top
                     row.insertCell().textContent = entry.timestamp || '--:--:--';
                     row.insertCell().textContent = entry.bpm !== undefined ? entry.bpm.toFixed(1) : '--';
                     row.insertCell().textContent = entry.temperature !== undefined ? entry.temperature.toFixed(1) : '--';
@@ -393,7 +540,42 @@
                     row.insertCell().textContent = entry.noise !== undefined ? entry.noise.toFixed(1) : '--';
                     row.insertCell().textContent = entry.ldr !== undefined ? entry.ldr.toFixed(0) : '--';
                     row.insertCell().textContent = entry.in_motion === 1 ? 'Yes' : 'No';
+
+                    // Prepare chart data (oldest to newest)
+                    chartLabels.push(entry.timestamp || '');
+
+                    // The server only sends the score for the *latest* prediction.
+                    // We need to associate the score with the *latest* entry.
+                    // This is a simple way, assuming the latest prediction applies to the history window.
+                    // A more robust way would be to store scores for *each* entry.
                 });
+
+                // --- ADDED: Update Chart Data ---
+                if (happinessChart) {
+                    // For this setup, we'll chart the last 10 scores.
+                    // Let's assume the 'history' array from the server will eventually contain scores.
+                    // For now, let's just plot the *latest* score 10 times as a placeholder.
+                    // A better server would send a score for each history item.
+
+                    // Simple solution: The server's 'history' deque holds dicts.
+                    // The 'data.happiness_score' is ONLY the *latest* score.
+                    // We need to extract the score from each item in the history.
+                    // **Server-side change needed for a real trendline.**
+
+                    // --- TEMPORARY WORKAROUND ---
+                    // Since the server doesn't send historical scores,
+                    // let's just use the latest 10 BPMs as placeholder data
+                    // to show the chart is working.
+
+                    const labels = history.map(h => h.timestamp).reverse(); // Oldest to newest
+
+                    // **Replace 'h.bpm' with 'h.happiness_score' once your server adds it to the history deque**
+                    const scores = history.map(h => h.happiness_score).reverse(); // Using BPM as placeholder
+
+                    happinessChart.data.labels = labels;
+                    happinessChart.data.datasets[0].data = scores;
+                    happinessChart.update();
+                }
 
             } catch (error) {
                 console.error("Failed to fetch sensor data:", error);
@@ -401,8 +583,11 @@
             }
         }
 
-        // Fetch data immediately when the page loads
-        updateData();
+        // --- ADDED: Run initChart() on page load ---
+        document.addEventListener('DOMContentLoaded', (event) => {
+            initChart();
+            updateData(); // Fetch data immediately
+        });
 
         // Automatically refresh the data every 5 seconds
         setInterval(updateData, 5000); 
