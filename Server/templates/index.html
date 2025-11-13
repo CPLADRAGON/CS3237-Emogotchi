@@ -514,8 +514,15 @@
 
                 const latest = data.latest || {};
 
-                let simpleTime = (latest.timestamp || '--:--:--').split(' ')[1] || '--:--:--';
+                // --- [ MODIFIED: Parse ISO timestamp ] ---
+                let simpleTime = '--:--:--';
+                if (latest.timestamp) {
+                    const d = new Date(latest.timestamp); // Create Date object from ISO string
+                    simpleTime = d.toLocaleTimeString();  // Format to local time (e.g., "6:30:15 PM")
+                }
                 elements.timestamp.textContent = `Last update: ${simpleTime}`;
+                // --- [ END OF MODIFICATION ] ---
+
                 elements.deviceName.textContent = latest.device_name || 'Unknown';
 
                 elements.bpm.textContent = latest.bpm !== undefined ? latest.bpm.toFixed(1) : '--';
@@ -542,17 +549,22 @@
                     elements.motionCard.classList.remove('in-motion');
                 }
 
-                // --- Update History Table (Last 10 readings) ---
                 const history = data.history || [];
                 elements.tableBody.innerHTML = '';
-
-                // This line will now work correctly
                 elements.historyCount.textContent = history.length;
 
                 history.reverse().forEach(entry => {
                     const row = elements.tableBody.insertRow();
-                    let entryTime = (entry.timestamp || ' ').split(' ')[1] || '--:--:--';
+
+                    // --- [ MODIFIED: Parse ISO timestamp for table ] ---
+                    let entryTime = '--:--:--';
+                    if (entry.timestamp) {
+                        const d = new Date(entry.timestamp);
+                        entryTime = d.toLocaleTimeString();
+                    }
                     row.insertCell().textContent = entryTime;
+                    // --- [ END OF MODIFICATION ] ---
+
                     row.insertCell().textContent = entry.bpm !== undefined ? entry.bpm.toFixed(1) : '--';
                     row.insertCell().textContent = entry.temperature !== undefined ? entry.temperature.toFixed(1) : '--';
                     row.insertCell().textContent = entry.humidity !== undefined ? entry.humidity.toFixed(0) : '--';
