@@ -8,28 +8,25 @@ import paho.mqtt.client as mqtt
 import csv
 import os
 import threading
-
-# --- [ ADDED: New Imports for LSTM Model ] ---
 import numpy as np
 from tensorflow.keras.models import load_model
+from datetime import datetime, timedelta
 
 # --- Flask, Data Storage ---
 app = Flask(__name__)
-TIME_STEPS = 10  # <-- ADDED: Must match the model's training
+TIME_STEPS = 10
 MAX_HISTORY = TIME_STEPS
-# This deque is now our LSTM input sequence
 sensor_data_history = deque(maxlen=MAX_HISTORY)
 latest_data = {}
-latest_prediction = "Waiting for data..."  # <-- MODIFIED: New default message
-latest_happiness_score = 0.0  # <-- ADDED: To store the 0-100 score
+latest_prediction = "Waiting for data..."
+latest_happiness_score = 0.0
 
-# --- [ MODIFIED: Load New LSTM Model and Scalers ] ---
+# --- Model Paths ---
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(SCRIPT_DIR, 'emogotchi_lstm_regressor.h5')
 SCALER_PATH = os.path.join(SCRIPT_DIR, 'sensor_scaler.pkl')
 TARGET_SCALER_PATH = os.path.join(SCRIPT_DIR, 'target_scaler.pkl')
 
-# These are the 6 features the model was trained on, in order.
 features = ['bpm', 'temperature', 'humidity', 'noise', 'ldr', 'in_motion']
 
 try:
@@ -45,6 +42,9 @@ except Exception as e:
 CSV_FILE_PATH = 'sensor_data.csv'
 CSV_HEADERS = ['timestamp', 'bpm', 'temperature',
                'humidity', 'noise', 'ldr', 'in_motion', 'happiness_score']
+
+TREND_CSV_FILE_PATH = os.path.join(SCRIPT_DIR, 'happiness_trend.csv')
+TREND_CSV_HEADERS = ['timestamp', 'happiness_score']
 csv_lock = threading.Lock()
 
 # --- MQTT Configuration ---
@@ -53,7 +53,7 @@ MQTT_BROKER_PORT = 1883
 MQTT_DATA_TOPIC = "esp32/sensor_data"
 MQTT_COMMAND_TOPIC = "esp32/prediction"
 
-# --- [ ADDED: Prediction functions from your notebook ] ---
+# --- Helper Functions (on_connect, get_happiness_score, map_score_to_emotion) ---
 
 
 def on_connect(client, userdata, flags, rc):
@@ -66,64 +66,33 @@ def on_connect(client, userdata, flags, rc):
 
 
 def get_happiness_score(sensor_sequence):
-    """
-    Takes a sequence of 10 sensor data dictionaries, checks hard thresholds,
-    runs the LSTM model, and returns only the 0-100 score.
-
-    :param sensor_sequence: A list of 10 dictionaries, from oldest to newest.
-    :return: A float (0-100) representing the happiness score.
-    """
     global model, feature_scaler, target_scaler, features
-
     if not model:
-        print("Model not loaded, returning default score.")
         return 50.0
-
     emotion_score = -1
-
-    # Get the MOST RECENT sensor reading for hard thresholds
     latest_reading = sensor_sequence[-1]
-
-    # --- 1. Check Hard Thresholds First ---
     if latest_reading['bpm'] > 130 and latest_reading['in_motion'] == 0:
         emotion_score = 10.0
     elif latest_reading['temperature'] > 32:
         emotion_score = 15.0
-
-    # --- 2. If no hard rule, use LSTM Model ---
     if emotion_score == -1:
         try:
-            # Convert list of dicts to 2D numpy array based on 'features' list
             data_list = [[reading[f] for f in features]
                          for reading in sensor_sequence]
             data_array = np.array(data_list)
-
-            # Scale features
             data_scaled = feature_scaler.transform(data_array)
-
-            # Reshape for LSTM: (1 sample, 10 time steps, 6 features)
             data_lstm = np.expand_dims(data_scaled, axis=0)
-
-            # Predict the *scaled* emotion score
             scaled_score = model.predict(data_lstm, verbose=0)[0]
-
-            # Inverse-transform the score to 0-100
             emotion_score = target_scaler.inverse_transform(
                 scaled_score.reshape(-1, 1))[0][0]
-
-            # Clip score to be safe (0-100)
             emotion_score = np.clip(emotion_score, 0, 100)
-
         except Exception as e:
             print(f"Error during LSTM prediction: {e}")
             emotion_score = 50.0
-
-    # --- 3. Return only the numeric score ---
     return round(emotion_score, 1)
 
 
 def map_score_to_emotion(score):
-    """Converts the 0-100 happiness score to a string."""
     if score < 34:
         return "Sad"
     elif score < 67:
@@ -131,67 +100,60 @@ def map_score_to_emotion(score):
     else:
         return "Happy"
 
-# --- This function will be called when we get a message ---
+# --- Main MQTT Callback ---
 
 
 def on_message(client, userdata, msg):
     global latest_data, latest_prediction, latest_happiness_score, sensor_data_history
 
-    print(f"Received message on topic {msg.topic}: {msg.payload.decode()}")
-
     try:
-        # 1. Decode and load the JSON data
         data = json.loads(msg.payload.decode())
 
-        # --- 2. Store the data ---
-        data['timestamp'] = time.strftime('%H:%M:%S')
+        data['timestamp'] = time.strftime('%Y-%m-%d %H:%M:%S')
         latest_data = data
-        sensor_data_history.append(data)  # The deque handles the history
 
-        # --- 3. Store data in CSV (Thread-safe) ---
+        # --- Sensor Data CSV (for full data) ---
         try:
             with csv_lock:
-                row_data = {key: data.get(key) for key in CSV_HEADERS}
+                row_data = {key: data.get(
+                    key) for key in CSV_HEADERS if key != 'happiness_score'}
                 with open(CSV_FILE_PATH, 'a', newline='') as f:
                     writer = csv.DictWriter(f, fieldnames=CSV_HEADERS)
                     writer.writerow(row_data)
         except Exception as e:
-            print(f"Error writing to CSV: {e}")
+            print(f"Error writing to sensor CSV: {e}")
 
-        # --- [ MODIFIED: New Prediction Logic ] ---
-        # 4. Check if we have enough data to predict
+        # --- Prediction Logic ---
+        sensor_data_history.append(data)
         if len(sensor_data_history) < TIME_STEPS:
             print(
                 f"Gathering data... {len(sensor_data_history)}/{TIME_STEPS} samples.")
             latest_prediction = "Waiting for data..."
             latest_happiness_score = 0.0
-
         else:
-            # We have a full sequence (10 readings)
-            print("Full sequence (10 samples) received. Running prediction...")
-
-            # Convert deque to a simple list for the function
             sequence = list(sensor_data_history)
-
-            # 5. Get 0-100 score from LSTM
             score = get_happiness_score(sequence)
-            latest_happiness_score = score  # Save for dashboard
+            latest_happiness_score = score
+            prediction_result = map_score_to_emotion(score)
+            latest_prediction = prediction_result
+
             data['happiness_score'] = score
 
-            # 6. Map score to emotion
-            prediction_result = map_score_to_emotion(score)
-            latest_prediction = prediction_result  # Save for dashboard
+            try:
+                with csv_lock:
+                    trend_row = {
+                        'timestamp': data['timestamp'], 'happiness_score': score}
+                    with open(TREND_CSV_FILE_PATH, 'a', newline='') as f:
+                        writer = csv.DictWriter(
+                            f, fieldnames=TREND_CSV_HEADERS)
+                        writer.writerow(trend_row)
+            except Exception as e:
+                print(f"Error writing to trend CSV: {e}")
 
-            print(f"Prediction: Score={score}, Emotion='{prediction_result}'")
-
-            # 7. Publish the command (Emotion:Score)
-            command = f"{prediction_result}:{score}"  # <-- CHANGED: New format
+            command = f"{prediction_result}:{score}"
             mqtt_client.publish(MQTT_COMMAND_TOPIC, command)
-            print(
-                f"Published prediction '{command}' to topic '{MQTT_COMMAND_TOPIC}'")
+            print(f"Prediction: {command}")
 
-    except json.JSONDecodeError:
-        print("Error: Received invalid JSON from ESP32")
     except Exception as e:
         print(f"An error occurred in on_message: {e}")
 
@@ -199,7 +161,7 @@ def on_message(client, userdata, msg):
 # --- MQTT Client Setup ---
 mqtt_client = mqtt.Client(client_id="flask_server")
 mqtt_client.on_message = on_message
-mqtt_client.on_connect = on_connect  # We define on_connect below
+mqtt_client.on_connect = on_connect
 try:
     mqtt_client.connect(MQTT_BROKER_HOST, MQTT_BROKER_PORT, 60)
     mqtt_client.loop_start()
@@ -208,8 +170,7 @@ except Exception as e:
     print(f"Could not connect to MQTT Broker: {e}")
     mqtt_client = None
 
-
-# --- Flask Routes for the Web UI ---
+# --- Flask Routes ---
 
 
 @app.route('/')
@@ -219,33 +180,65 @@ def index():
 
 @app.route('/data')
 def get_data():
-    # --- [ MODIFIED: Added happiness_score ] ---
     return jsonify({
         "latest": latest_data,
         "history": list(sensor_data_history),
         "prediction": latest_prediction,
-        "happiness_score": latest_happiness_score  # Optional: for the dashboard
+        "happiness_score": latest_happiness_score
     })
 
-# ... (rest of your Flask routes: /api/upload, init_csv, /download) ...
+# --- [ MODIFIED: Trend Endpoint now calculates hourly average ] ---
 
 
-@app.route('/api/upload', methods=['POST'])
-def http_upload():
-    print("Received an HTTP POST request. This route is deprecated.")
-    return jsonify({"status": "deprecated", "message": "Please use MQTT"}), 404
+@app.route('/trend_data')
+def get_trend_data():
+    try:
+        # 1. Read the trend data
+        df = pd.read_csv(TREND_CSV_FILE_PATH)
+
+        # 2. Convert timestamp column to datetime objects
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+
+        # 3. Get the cutoff for 24 hours ago
+        one_day_ago = datetime.now() - timedelta(hours=24)
+
+        # 4. Filter the DataFrame for the last 24 hours
+        df_filtered = df[df['timestamp'] >= one_day_ago].copy()
+
+        # 5. --- NEW: Resample to hourly average ---
+        # Set timestamp as the index for resampling
+        df_filtered.set_index('timestamp', inplace=True)
+
+        # Resample by hour ('H'), get the mean, and remove any NaN rows
+        df_hourly_avg = df_filtered.resample('H').mean().dropna()
+
+        # Reset index to get 'timestamp' back as a column for JSON
+        df_hourly_avg.reset_index(inplace=True)
+
+        # 6. Return the filtered, averaged data as JSON
+        return jsonify(df_hourly_avg.to_dict(orient='records'))
+
+    except FileNotFoundError:
+        return jsonify([])  # Send empty list if file doesn't exist yet
+    except Exception as e:
+        print(f"Error in /trend_data: {e}")
+        return jsonify({"error": str(e)}), 500
+
+# --- CSV Init Functions ---
 
 
-def init_csv():
+def init_csv(path, headers):
     with csv_lock:
-        if not os.path.exists(CSV_FILE_PATH):
+        if not os.path.exists(path):
             try:
-                with open(CSV_FILE_PATH, 'w', newline='') as f:
-                    writer = csv.DictWriter(f, fieldnames=CSV_HEADERS)
+                with open(path, 'w', newline='') as f:
+                    writer = csv.DictWriter(f, fieldnames=headers)
                     writer.writeheader()
-                print(f"Created new CSV file: {CSV_FILE_PATH}")
+                print(f"Created new CSV file: {path}")
             except Exception as e:
-                print(f"Error creating CSV file: {e}")
+                print(f"Error creating CSV file {path}: {e}")
+
+# ... (other routes like /download) ...
 
 
 @app.route('/download')
@@ -262,5 +255,7 @@ def download_csv():
 
 # --- Run Flask ---
 if __name__ == '__main__':
-    init_csv()
+    # Init both CSV files
+    init_csv(CSV_FILE_PATH, CSV_HEADERS)
+    init_csv(TREND_CSV_FILE_PATH, TREND_CSV_HEADERS)
     app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)

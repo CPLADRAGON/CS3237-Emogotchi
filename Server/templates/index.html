@@ -9,27 +9,19 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
-
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
-
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0"></script>
 
     <style>
         :root {
             --bg-color: #1a1b26;
-            /* Dark background */
             --card-color: #24283b;
-            /* Lighter card background */
             --text-color: #c0caf5;
-            /* Light text */
             --text-dim: #a9b1d6;
-            /* Dimmer text */
             --accent-green: #73daca;
-            /* Green accent */
             --accent-blue: #7aa2f7;
-            /* Blue accent */
             --accent-orange: #ff9e64;
-            /* Orange accent */
             --border-color: #414868;
             --shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
         }
@@ -119,31 +111,26 @@
             color: var(--text-color);
         }
 
-        /* Special card for the chart */
         .chart-card {
-            /* Make it span more columns on larger screens */
             grid-column: 1 / -1;
-            /* Default to full width */
             background-color: var(--card-color);
             border-radius: 12px;
             padding: 20px;
             box-shadow: var(--shadow);
             border: 1px solid var(--border-color);
-            margin-bottom: 30px;
+            margin-bottom: 10px;
+            height: 480px;
         }
 
         /* Responsive grid layout */
         @media (min-width: 900px) {
             .latest-grid {
-                /* 4 columns on medium screens */
                 grid-template-columns: repeat(4, 1fr);
             }
 
             .chart-card {
-                /* Span 2 columns */
-                grid-column: span 2;
-                grid-row: span 2;
-                /* Take up more vertical space */
+                grid-column: 1 / span 2;
+                grid-row: 1 / span 2;
             }
 
             .metric-card#stress-card {
@@ -164,19 +151,38 @@
             .metric-card#motion-card {
                 grid-column: 4;
                 grid-row: 2;
+            }
+
+            /* --- ADDED: Explicit placement for other cards --- */
+            .metric-card#temp-card {
+                grid-column: 1;
+                grid-row: 3;
+            }
+
+            .metric-card#hum-card {
+                grid-column: 2;
+                grid-row: 3;
+            }
+
+            .metric-card#noise-card {
+                grid-column: 3;
+                grid-row: 3;
+            }
+
+            .metric-card#light-card {
+                grid-column: 4;
+                grid-row: 3;
             }
         }
 
         @media (min-width: 1200px) {
             .latest-grid {
-                /* 5 columns on large screens */
                 grid-template-columns: repeat(5, 1fr);
             }
 
             .chart-card {
-                /* Span 3 columns */
-                grid-column: span 3;
-                grid-row: span 2;
+                grid-column: 1 / span 3;
+                grid-row: 1 / span 2;
             }
 
             .metric-card#stress-card {
@@ -198,9 +204,30 @@
                 grid-column: 5;
                 grid-row: 2;
             }
+
+            /* --- ADDED: Explicit placement for other cards --- */
+            .metric-card#temp-card {
+                grid-column: 1;
+                grid-row: 3;
+            }
+
+            .metric-card#hum-card {
+                grid-column: 2;
+                grid-row: 3;
+            }
+
+            .metric-card#noise-card {
+                grid-column: 3;
+                grid-row: 3;
+            }
+
+            .metric-card#light-card {
+                grid-column: 4;
+                grid-row: 3;
+            }
         }
 
-
+        /* ... (rest of your CSS) ... */
         .metric-card.stressed {
             background-color: #4a2f2f;
             border-color: var(--accent-orange);
@@ -227,7 +254,6 @@
             color: var(--accent-blue);
         }
 
-        /* Icon colors */
         .fa-heartbeat {
             color: #f7768e;
         }
@@ -259,7 +285,6 @@
         .fa-smile {
             color: var(--accent-green);
         }
-
 
         .history-card {
             background-color: var(--card-color);
@@ -310,86 +335,55 @@
         <div id="device-header">
             User: <span id="device-name">--</span>
         </div>
-
         <h1>Emogotchi Dashboard</h1>
         <span id="latest-timestamp" style="color: var(--text-dim); font-size: 0.9em;">Loading...</span>
-
-        <h2 style="margin-top: 30px;">Latest Readings</h2>
-
+        <h2 style="margin-top: 10px;">Latest Readings</h2>
         <div class="latest-grid">
-
             <div class="chart-card">
-                <h3 style="color: var(--text-dim); margin-bottom: 15px;">Emotion Trend (0-100)</h3>
-                <canvas id="happinessChart"></canvas>
+                <h3 style="color: var(--text-dim); margin-bottom: 5px;">Happiness Trend (Last 24 Hours)
+                </h3>
+                <canvas id="happinessChart" width="812" height="500"
+                    style="display: block; box-sizing: border-box; height: 300px; width: 649.6px;"></canvas>
             </div>
 
             <div class="metric-card" id="stress-card">
-                <div class="metric-header">
-                    <i class="fas fa-brain"></i>
-                    <span>Stress</span>
-                </div>
+                <div class="metric-header"><i class="fas fa-brain"></i><span>Stress</span></div>
                 <div class="metric-value" id="latest-prediction">N/A</div>
             </div>
-
             <div class="metric-card" id="happiness-card">
-                <div class="metric-header">
-                    <i class="fas fa-smile"></i>
-                    <span>Happiness</span>
-                </div>
+                <div class="metric-header"><i class="fas fa-smile"></i><span>Happiness</span></div>
                 <div class="metric-value" id="latest-happiness-score">--</div>
             </div>
-
             <div class="metric-card" id="bpm-card">
-                <div class="metric-header">
-                    <i class="fas fa-heartbeat"></i>
-                    <span>BPM</span>
-                </div>
+                <div class="metric-header"><i class="fas fa-heartbeat"></i><span>BPM</span></div>
                 <div class="metric-value" id="latest-bpm">--</div>
             </div>
-
             <div class="metric-card" id="motion-card">
-                <div class="metric-header">
-                    <i class="fas fa-walking"></i>
-                    <span>In Motion</span>
-                </div>
+                <div class="metric-header"><i class="fas fa-walking"></i><span>In Motion</span></div>
                 <div class="metric-value" id="latest-motion">--</div>
             </div>
 
-            <div class="metric-card">
-                <div class="metric-header">
-                    <i class="fas fa-thermometer-half"></i>
-                    <span>Temp</span>
-                </div>
+            <div class="metric-card" id="temp-card">
+                <div class="metric-header"><i class="fas fa-thermometer-half"></i><span>Temp</span></div>
                 <div class="metric-value" id="latest-temp">--</div>
             </div>
-
-            <div class="metric-card">
-                <div class="metric-header">
-                    <i class="fas fa-tint"></i>
-                    <span>Humidity</span>
-                </div>
+            <div class="metric-card" id="hum-card">
+                <div class="metric-header"><i class="fas fa-tint"></i><span>Humidity</span></div>
                 <div class="metric-value" id="latest-hum">--</div>
             </div>
-
-            <div class="metric-card">
-                <div class="metric-header">
-                    <i class="fas fa-volume-up"></i>
-                    <span>Noise</span>
-                </div>
+            <div class="metric-card" id="noise-card">
+                <div class="metric-header"><i class="fas fa-volume-up"></i><span>Noise</span></div>
                 <div class="metric-value" id="latest-noise">--</div>
             </div>
-
-            <div class="metric-card">
-                <div class="metric-header">
-                    <i class="fas fa-sun"></i>
-                    <span>Light (LDR)</span>
-                </div>
+            <div class="metric-card" id="light-card">
+                <div class="metric-header"><i class="fas fa-sun"></i><span>Light (LDR)</span></div>
                 <div class="metric-value" id="latest-ldr">--</div>
             </div>
 
+
         </div>
         <div class="history-card">
-            <h2>Recent History (Last <span id="history-count">0</span> readings)</h2>
+            <h2>Recent History (Last 10 Readings)</h2>
             <table id="history-table">
                 <thead>
                     <tr>
@@ -400,17 +394,17 @@
                         <th>Noise</th>
                         <th>LDR</th>
                         <th>Motion</th>
+                        <th>Score</th>
+
                     </tr>
                 </thead>
-                <tbody>
-                </tbody>
+                <tbody></tbody>
             </table>
         </div>
     </div>
-    <script>
-        // 6. MODIFIED JAVASCRIPT
 
-        // Cache DOM elements
+    <script>
+        // --- Cache DOM elements ---
         const elements = {
             timestamp: document.getElementById('latest-timestamp'),
             deviceName: document.getElementById('device-name'),
@@ -421,21 +415,18 @@
             ldr: document.getElementById('latest-ldr'),
             motion: document.getElementById('latest-motion'),
             prediction: document.getElementById('latest-prediction'),
-            happinessScore: document.getElementById('latest-happiness-score'), // Added
+            happinessScore: document.getElementById('latest-happiness-score'),
             historyCount: document.getElementById('history-count'),
             tableBody: document.getElementById('history-table').querySelector('tbody'),
             stressCard: document.getElementById('stress-card'),
             motionCard: document.getElementById('motion-card')
         };
 
-        // --- ADDED: Chart.js Global Variable ---
         let happinessChart = null;
 
-        // --- ADDED: Function to initialize the chart ---
+        // --- Chart Initialization ---
         function initChart() {
             const ctx = document.getElementById('happinessChart').getContext('2d');
-
-            // Gradient fill
             const gradient = ctx.createLinearGradient(0, 0, 0, 300);
             gradient.addColorStop(0, 'rgba(115, 218, 202, 0.6)');
             gradient.addColorStop(1, 'rgba(115, 218, 202, 0.05)');
@@ -443,16 +434,16 @@
             happinessChart = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: [], // Will be filled with timestamps
                     datasets: [{
                         label: 'Happiness Score',
-                        data: [], // Will be filled with scores
-                        borderColor: 'rgba(115, 218, 202, 1)', // --accent-green
+                        data: [],
+                        borderColor: 'rgba(115, 218, 202, 1)',
                         backgroundColor: gradient,
                         fill: true,
-                        tension: 0.4, // Makes the line smooth
+                        tension: 0.4,
                         pointRadius: 2,
-                        pointBackgroundColor: 'rgba(115, 218, 202, 1)'
+                        pointBackgroundColor: 'rgba(115, 218, 202, 1)',
+                        stepped: true,
                     }]
                 },
                 options: {
@@ -461,24 +452,57 @@
                     scales: {
                         y: {
                             beginAtZero: true,
-                            max: 100, // Score is 0-100
+                            max: 100,
                             ticks: { color: '#a9b1d6' },
                             grid: { color: '#414868' }
                         },
                         x: {
+                            type: 'time',
+                            time: {
+                                unit: 'hour',
+                                tooltipFormat: 'MMM d, HH:mm',
+                                displayFormats: {
+                                    hour: 'HH:mm' // Show '14:00', '15:00'
+                                }
+                            },
                             ticks: { color: '#a9b1d6' },
                             grid: { display: false }
                         }
                     },
                     plugins: {
-                        legend: {
-                            display: false // Hide the legend
-                        }
+                        legend: { display: false }
                     }
                 }
             });
         }
 
+        // --- Function to update trendline (every 60s) ---
+        async function updateTrendline() {
+            try {
+                console.log("Fetching /trend_data...");
+                const response = await fetch('/trend_data');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const trendData = await response.json(); // This is our 24h hourly avg
+
+                if (happinessChart) {
+                    const chartData = trendData.map(entry => ({
+                        x: new Date(entry.timestamp),
+                        y: entry.happiness_score
+                    }));
+
+                    happinessChart.data.datasets[0].data = chartData;
+                    happinessChart.update();
+                }
+
+            } catch (error) {
+                console.error("Failed to fetch trend data:", error);
+            }
+        }
+
+
+        // --- Function to update metrics (every 5s) ---
         async function updateData() {
             try {
                 const response = await fetch('/data');
@@ -487,29 +511,25 @@
                 }
                 const data = await response.json();
 
-                // --- Update Latest Data ---
                 const latest = data.latest || {};
 
-                elements.timestamp.textContent = `Last update: ${latest.timestamp || '--:--:--'}`;
+                let simpleTime = (latest.timestamp || '--:--:--').split(' ')[1] || '--:--:--';
+                elements.timestamp.textContent = `Last update: ${simpleTime}`;
                 elements.deviceName.textContent = latest.device_name || 'Unknown';
 
-                // Format values
                 elements.bpm.textContent = latest.bpm !== undefined ? latest.bpm.toFixed(1) : '--';
                 elements.temp.textContent = latest.temperature !== undefined ? `${latest.temperature.toFixed(1)}°C` : '--';
                 elements.hum.textContent = latest.humidity !== undefined ? `${latest.humidity.toFixed(0)}%` : '--';
                 elements.noise.textContent = latest.noise !== undefined ? latest.noise.toFixed(1) : '--';
-G               elements.ldr.textContent = latest.ldr !== undefined ? latest.ldr.toFixed(0) : '--';
+                elements.ldr.textContent = latest.ldr !== undefined ? latest.ldr.toFixed(0) : '--';
 
                 const motionText = latest.in_motion === 1 ? 'Yes' : (latest.in_motion === 0 ? 'No' : '--');
                 elements.motion.textContent = motionText;
 
                 const predictionText = data.prediction || 'N/A';
                 elements.prediction.textContent = predictionText;
-
-                // --- ADDED: Update happiness score card ---
                 elements.happinessScore.textContent = data.happiness_score !== undefined ? data.happiness_score.toFixed(1) : '--';
 
-                // --- DYNAMIC CLASS STYLING ---
                 if (predictionText === 'Sad' || predictionText === 'Stressed') {
                     elements.stressCard.classList.add('stressed');
                 } else {
@@ -521,61 +541,23 @@ G               elements.ldr.textContent = latest.ldr !== undefined ? latest.ldr
                     elements.motionCard.classList.remove('in-motion');
                 }
 
-                // --- Update History Table ---
+                // --- Update History Table (Last 10 readings) ---
                 const history = data.history || [];
                 elements.tableBody.innerHTML = '';
                 elements.historyCount.textContent = history.length;
 
-                // We will also use history to update the chart
-                const chartLabels = [];
-                const chartData = [];
-
-                history.forEach(entry => {
-                    // Update table
-                    const row = elements.tableBody.insertRow(0); // Insert at the top
-                    row.insertCell().textContent = entry.timestamp || '--:--:--';
+                history.reverse().forEach(entry => {
+                    const row = elements.tableBody.insertRow();
+                    let entryTime = (entry.timestamp || ' ').split(' ')[1] || '--:--:--';
+                    row.insertCell().textContent = entryTime;
                     row.insertCell().textContent = entry.bpm !== undefined ? entry.bpm.toFixed(1) : '--';
                     row.insertCell().textContent = entry.temperature !== undefined ? entry.temperature.toFixed(1) : '--';
                     row.insertCell().textContent = entry.humidity !== undefined ? entry.humidity.toFixed(0) : '--';
                     row.insertCell().textContent = entry.noise !== undefined ? entry.noise.toFixed(1) : '--';
                     row.insertCell().textContent = entry.ldr !== undefined ? entry.ldr.toFixed(0) : '--';
                     row.insertCell().textContent = entry.in_motion === 1 ? 'Yes' : 'No';
-
-                    // Prepare chart data (oldest to newest)
-                    chartLabels.push(entry.timestamp || '');
-
-                    // The server only sends the score for the *latest* prediction.
-                    // We need to associate the score with the *latest* entry.
-                    // This is a simple way, assuming the latest prediction applies to the history window.
-                    // A more robust way would be to store scores for *each* entry.
+                    row.insertCell().textContent = (entry.happiness_score !== undefined ? entry.happiness_score.toFixed(1) : '--');
                 });
-
-                // --- ADDED: Update Chart Data ---
-                if (happinessChart) {
-                    // For this setup, we'll chart the last 10 scores.
-                    // Let's assume the 'history' array from the server will eventually contain scores.
-                    // For now, let's just plot the *latest* score 10 times as a placeholder.
-                    // A better server would send a score for each history item.
-
-                    // Simple solution: The server's 'history' deque holds dicts.
-                    // The 'data.happiness_score' is ONLY the *latest* score.
-                    // We need to extract the score from each item in the history.
-                    // **Server-side change needed for a real trendline.**
-
-                    // --- TEMPORARY WORKAROUND ---
-                    // Since the server doesn't send historical scores,
-                    // let's just use the latest 10 BPMs as placeholder data
-                    // to show the chart is working.
-
-                    const labels = history.map(h => h.timestamp).reverse(); // Oldest to newest
-
-                    // **Replace 'h.bpm' with 'h.happiness_score' once your server adds it to the history deque**
-                    const scores = history.map(h => h.happiness_score).reverse(); // Using BPM as placeholder
-
-                    happinessChart.data.labels = labels;
-                    happinessChart.data.datasets[0].data = scores;
-                    happinessChart.update();
-                }
 
             } catch (error) {
                 console.error("Failed to fetch sensor data:", error);
@@ -583,14 +565,17 @@ G               elements.ldr.textContent = latest.ldr !== undefined ? latest.ldr
             }
         }
 
-        // --- ADDED: Run initChart() on page load ---
+        // --- Page Load & Timers ---
         document.addEventListener('DOMContentLoaded', (event) => {
             initChart();
-            updateData(); // Fetch data immediately
+            updateData(); // Fetch 5s data immediately
+            updateTrendline(); // Fetch 60s data immediately
         });
 
-        // Automatically refresh the data every 5 seconds
-        setInterval(updateData, 5000); 
+        // Update metrics every 5 seconds
+        setInterval(updateData, 5000);
+        // Update trendline every 60 seconds
+        setInterval(updateTrendline, 60000); 
     </script>
 </body>
 
