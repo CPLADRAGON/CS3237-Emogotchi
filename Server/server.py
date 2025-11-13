@@ -228,7 +228,7 @@ def get_trend_data():
 
         # 5. (REMOVED) We no longer resample and average
 
-        # --- [ THIS IS THE FIX ] ---
+        # --- [ THIS IS THE CRITICAL FIX ] ---
         # Replace any NaN/NaT with None, which becomes 'null' in JSON
         df_final = df_filtered.where(pd.notnull(df_filtered), None)
         # --- [ END OF FIX ] ---
