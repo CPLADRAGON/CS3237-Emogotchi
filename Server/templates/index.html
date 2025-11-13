@@ -383,7 +383,7 @@
 
         </div>
         <div class="history-card">
-            <h2>Recent History (Last 10 Readings)</h2>
+            <h2>Recent History (Last <span id="history-count">10</span> Readings)</h2>
             <table id="history-table">
                 <thead>
                     <tr>
@@ -395,7 +395,6 @@
                         <th>LDR</th>
                         <th>Motion</th>
                         <th>Score</th>
-
                     </tr>
                 </thead>
                 <tbody></tbody>
@@ -416,7 +415,7 @@
             motion: document.getElementById('latest-motion'),
             prediction: document.getElementById('latest-prediction'),
             happinessScore: document.getElementById('latest-happiness-score'),
-            historyCount: document.getElementById('history-count'),
+            historyCount: document.getElementById('history-count'), // This will no longer be null
             tableBody: document.getElementById('history-table').querySelector('tbody'),
             stressCard: document.getElementById('stress-card'),
             motionCard: document.getElementById('motion-card')
@@ -544,6 +543,8 @@
                 // --- Update History Table (Last 10 readings) ---
                 const history = data.history || [];
                 elements.tableBody.innerHTML = '';
+
+                // This line will now work correctly
                 elements.historyCount.textContent = history.length;
 
                 history.reverse().forEach(entry => {
