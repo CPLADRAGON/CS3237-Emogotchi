@@ -33,7 +33,7 @@ TARGET_SCALER_PATH = os.path.join(SCRIPT_DIR, 'target_scaler.pkl')
 features = ['bpm', 'temperature', 'humidity', 'noise', 'ldr', 'in_motion']
 
 try:
-    model = load_model(MODEL_PATH)
+    model = load_model(MODEL_PATH, compile=False)
     feature_scaler = joblib.load(SCALER_PATH)
     target_scaler = joblib.load(TARGET_SCALER_PATH)
     print(f"Successfully loaded LSTM model, feature scaler, and target scaler.")
