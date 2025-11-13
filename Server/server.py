@@ -25,7 +25,7 @@ latest_happiness_score = 0.0  # <-- ADDED: To store the 0-100 score
 
 # --- [ MODIFIED: Load New LSTM Model and Scalers ] ---
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(SCRIPT_DIR, 'emogotchi_lstm_regressor.keras')
+MODEL_PATH = os.path.join(SCRIPT_DIR, 'emogotchi_lstm_regressor.h5')
 SCALER_PATH = os.path.join(SCRIPT_DIR, 'sensor_scaler.pkl')
 TARGET_SCALER_PATH = os.path.join(SCRIPT_DIR, 'target_scaler.pkl')
 
