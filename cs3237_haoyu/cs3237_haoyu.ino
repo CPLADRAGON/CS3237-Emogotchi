@@ -24,6 +24,10 @@
 #define MPU_INT_PIN 4 // MPU6050 INT 引脚
 #define HEART_LED_PIN 2 // 新增: 脉搏指示灯（假设为 ESP32 内置 LED）
 
+// --- ADDED: RGB LED PINS ---
+#define LED_RED 12
+#define LED_GREEN 13
+#define LED_BLUE 14
 
 // 变量
 #define SAMPLE_SIZE_H 4     // 心率，4次采样
@@ -36,15 +40,16 @@
 #define PUBLISH_INTERVAL_MS 30000 // 发布间隔c
 
 // --- WiFi & HTTP 常量 ---
-// const char* ssid = "CPLADRAGON";
-// const char* password = "10293847";
-const char* ssid = "05400";
-const char* password = "180098123";
+const char* ssid = "CPLADRAGON";
+const char* password = "10293847";
+// const char* ssid = "05400";
+// const char* password = "180098123";
 const char* device_name = "Boyu";
 
 // --- MQTT 常量 ---
 const char* mqtt_server = "178.128.94.113";
 const char* mqtt_topic = "esp32/sensor_data"; 
+const char* mqtt_command_topic = "esp32/prediction";  //Topic to SEND on
 
 // MPU6050 寄存器地址和配置
 #define MPU6050_ADDRESS       0x68
@@ -80,6 +85,24 @@ volatile bool g_mqttConnected = false;
 float g_ldr = 0.0;
 int g_in_motion = 1;
 
+
+// --- ADDED: RGB LED State Enum (Replaces volatile String) ---
+enum LedState { 
+  STATE_NORMAL, 
+  STATE_HAPPY, 
+  STATE_STRESSED 
+};
+volatile LedState g_currentState = STATE_NORMAL; // Default to happy. This is now volatile-safe!
+
+// For "Happy" state (Breathing)
+float happyPulseSpeed = 0.005; // Controls the "breathing" speed
+
+// For "Stressed" state (Blinking)
+unsigned long stressedLastUpdate = 0;
+int stressedBlinkSpeed = 250; // 250ms on, 250ms off
+bool stressedState = false; // false = off, true = on
+
+
 // 函数声明
 void Task_HeartRate(void *pvParameters);
 void Task_DHT(void *pvParameters);
@@ -89,13 +112,27 @@ void Task_Alarm(void *pvParameters);
 void IRAM_ATTR MPU_ISR();
 void mpu_write_register(uint8_t reg_addr, uint8_t data);
 void Task_LDR(void *pvParameters);
-void Task_UploadData(void *pvParameters); // <-- ADDED
-void Task_MQTT_Loop(void *pvParameters);  // <-- ADDED
-void reconnectMQTT();                     // <-- ADDED
+void Task_UploadData(void *pvParameters); 
+void Task_MQTT_Loop(void *pvParameters);  
+void reconnectMQTT();                  
+void mqttCallback(char* topic, byte* payload, unsigned int length); // <-- ADDED: MQTT Callback
+void Task_LED_Control(void *pvParameters); // <-- ADDED: LED Task
+
+// --- ADDED: LED Helper Functions ---
+void showRGB(int r, int g, int b);
+void showStressed();
+void showNormal();
+void showHappy();
+
 
 void setup() {
   Serial.begin(115200);
   pinMode(HEART_LED_PIN, OUTPUT);
+  
+  // --- ADDED: Initialize LED pins ---
+  pinMode(LED_RED, OUTPUT);
+  pinMode(LED_GREEN, OUTPUT);
+  pinMode(LED_BLUE, OUTPUT);
 
   // 创建 FreeRTOS 对象
   motionDetectedSemaphore = xSemaphoreCreateBinary();
@@ -118,18 +155,6 @@ void setup() {
   // ----------------------------------------------------
   
   if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
-    /*
-    if(display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-      display.clearDisplay();
-      display.setTextSize(1);
-      display.setTextColor(SSD1306_WHITE);
-      display.setCursor(0,0);
-      display.println("System Ready!");
-      display.display();
-    } else {
-      Serial.println("SSD1306 allocation failed");
-    }
-    */
     
     if (mpu.begin()) {
       mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
@@ -166,32 +191,9 @@ void setup() {
   Serial.print("IP Address: ");
   Serial.println(WiFi.localIP());
 
-
-
-
-
-
-
-
-
-/*
-  // --- 配置 MQTT 客户端对象 ---
-    mqttClient.enableDebuggingMessages();
-    mqttClient.setURI(mqtt_server);
-    mqttClient.enableLastWillMessage("lwt", "I am going offline");
-    mqttClient.setKeepAlive(30);
-    mqttClient.setOnMessageCallback([](const std::string &topic, const std::string &payload) {
-        log_i("Global callback: %s: %s", topic.c_str(), payload.c_str());
-    });
-    mqttClient.loopStart();
-*/
- client.setServer(mqtt_server, 1883);
-
-
-
-
-
-
+  // --- MQTT Setup ---
+  client.setServer(mqtt_server, 1883);
+  client.setCallback(mqttCallback); // <-- ADDED: Set the callback function
 
   // 创建任务
   // Core 1 (实时传感器)
@@ -201,13 +203,11 @@ void setup() {
   xTaskCreatePinnedToCore(Task_Sound, "Sound", 2048, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(Task_Motion, "MotionTask", 4096, NULL, 2, NULL, 1);
   xTaskCreatePinnedToCore(Task_Alarm, "AlarmTask", 2048, NULL, 3, NULL, 1);
-  // xTaskCreatePinnedToCore(Task_OLED, "OLEDTask", 4096, NULL, 4, NULL, 1);  <------------------------------------------------------------------------------  移除 OLED
-
-  // Core 0 (网络通信)
-  // xTaskCreatePinnedToCore(Task_UploadData, "UploadTask", 4096, NULL, 4, NULL, 0); 
-  //xTaskCreatePinnedToCore(Task_MqttPublish, "MqttPublish", 4096, NULL, 1, NULL, 0);
-  xTaskCreatePinnedToCore(Task_UploadData, "Upload", 4096, NULL, 2, NULL, 0); // <-- ADDED
-  xTaskCreatePinnedToCore(Task_MQTT_Loop, "MQTTLoop", 4096, NULL, 2, NULL, 0); // <-- ADDED
+  
+  // Core 0 (Connectivity & Status)
+  xTaskCreatePinnedToCore(Task_UploadData, "Upload", 4096, NULL, 2, NULL, 0); 
+  xTaskCreatePinnedToCore(Task_MQTT_Loop, "MQTTLoop", 4096, NULL, 2, NULL, 0); 
+  xTaskCreatePinnedToCore(Task_LED_Control, "LEDs", 2048, NULL, 1, NULL, 0); // <-- ADDED: Start LED task
 
 }
 
@@ -216,39 +216,48 @@ void loop() {
   vTaskDelay(pdMS_TO_TICKS(1000));
 }
 
+// --- MQTT Callback Function (FIXED) ---
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  // Convert payload to a String
+  String message = "";
+  for (int i = 0; i < length; i++) {
+    message += (char)payload[i];
+  }
 
+  Serial.printf("MQTT Callback: Topic [%s]: %s\n", topic, message.c_str());
 
-
-
-
-
-
-
-/*
-#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0)
-esp_err_t handleMQTT(esp_mqtt_event_handle_t event)
-{
-    mqttClient.onEventCallback(event);
-    return ESP_OK;
+  // Check if the message is on the command topic
+  if (String(topic) == mqtt_command_topic) {
+    
+    // --- CHANGED: Assign enum values (volatile-safe) ---
+    if (message == "Sad") { 
+      g_currentState = STATE_STRESSED; // <-- This is safe
+      Serial.println("State set to STRESSED (from 'Sad')");
+    } 
+    else if (message == "Happy") {
+      g_currentState = STATE_HAPPY; // <-- This is safe
+      Serial.println("State set to HAPPY");
+    }
+    else if (message == "Normal") {
+      g_currentState = STATE_NORMAL; // <-- This is safe
+      Serial.println("State set to NORMAL");
+    }
+  }
 }
-#else 
-void handleMQTT(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
-{
-    auto *event = static_cast<esp_mqtt_event_handle_t>(event_data);
-    mqttClient.onEventCallback(event);
-}
-#endif
-*/
 
 void reconnectMQTT() {
   while (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
     // Attempt to connect
-    // You can change the client ID if needed
     if (client.connect("esp32Client")) {
       Serial.println("connected");
-      // You can also subscribe to topics here if needed
-      // client.subscribe("inTopic");
+      // --- ADDED: Subscribe to the command topic ---
+      if(client.subscribe(mqtt_command_topic)) {
+        Serial.printf("Subscribed to command topic: %s\n", mqtt_command_topic);
+      } else {
+        Serial.println("Failed to subscribe to command topic!");
+      }
+
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
@@ -331,19 +340,6 @@ void Task_UploadData(void *pvParameters) {
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 // 写入MPU
 void mpu_write_register(uint8_t reg_addr, uint8_t data) {
     // 保护 I2C
@@ -359,6 +355,75 @@ void mpu_write_register(uint8_t reg_addr, uint8_t data) {
     } else {
         Serial.println("MPU Write: Failed to get I2C Mutex!");
     }
+}
+
+
+// --- ADDED: LED Helper Functions (from your snippet) ---
+
+// Helper function to set all 3 colors
+void showRGB(int r, int g, int b) {
+  // Constrain values to be 0-255
+  r = constrain(r, 0, 255);
+  g = constrain(g, 0, 255);
+  b = constrain(b, 0, 255);
+
+  // Use the #defined pins
+  analogWrite(LED_RED, r);
+  analogWrite(LED_GREEN, g);
+  analogWrite(LED_BLUE, b);
+}
+
+// STATE 1: "Stressed"
+void showStressed() {
+  if (millis() - stressedLastUpdate > stressedBlinkSpeed) {
+    stressedLastUpdate = millis(); 
+    stressedState = !stressedState; 
+
+    if (stressedState) {
+      showRGB(255, 0, 0); // LED On (Bright Red)
+    } else {
+      showRGB(0, 0, 0); // LED Off
+    }
+  }
+}
+
+// STATE 2: "Normal"
+void showNormal() {
+  showRGB(0, 0, 255); // Solid blue
+}
+
+// STATE 3: "Happy"
+void showHappy() {
+  float pulse = (sin(millis() * happyPulseSpeed) + 1.0) / 2.0;
+  int greenValue = 50 + (pulse * 205);
+  showRGB(0, greenValue, 0); // Breathing green
+}
+
+
+// --- New FreeRTOS Task for LED Control (FIXED) ---
+void Task_LED_Control(void *pvParameters) {
+  Serial.println("Task_LED_Control started.");
+  while(1) {
+    
+    // --- THIS IS THE FIX ---
+    // Change "String" to "LedState"
+    // We make a local copy because the variable is volatile
+    LedState currentStateCopy = g_currentState; 
+    // --- END OF FIX ---
+
+    // Check the local copy and call the matching function
+    if (currentStateCopy == STATE_STRESSED) {
+      showStressed();
+    } else if (currentStateCopy == STATE_HAPPY) {
+      showHappy();
+    } else {
+      // Default to "normal"
+      showNormal();
+    }
+    
+    // Yield to other tasks
+    vTaskDelay(pdMS_TO_TICKS(20)); // Update ~50 times/sec
+  }
 }
 
 // ---------------------- 任务定义 ----------------------
@@ -537,60 +602,6 @@ void Task_Sound(void *pvParameters) {
   }
 }
 
-/*
-// OLED显示
-void Task_OLED(void *pvParameters) {
-    const TickType_t xFrequency = pdMS_TO_TICKS(500); // 每500ms
-    TickType_t xLastWakeTime = xTaskGetTickCount();
-    
-    float temp_bpm = 0.0;
-    float temp_t = 0.0;
-    float temp_h = 0.0;
-    int temp_n = 0;
-    
-    char lineBuffer[16];
-
-    while (1) {
-        // 1. 读取共享数据 (必须使用 sensorDataMutex 保护)
-        if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            temp_bpm = g_bpm;
-            temp_t = g_temp;
-            temp_h = g_hum;
-            temp_n = g_noise;
-            xSemaphoreGive(sensorDataMutex);
-        }
-
-        // 2. 刷新 OLED 屏幕 (必须使用 i2cMutex 保护)
-        if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-            display.clearDisplay();
-            display.setCursor(0, 0);
-
-            // Line 1: Temp & Hum
-            snprintf(lineBuffer, sizeof(lineBuffer), "T:%.1f H:%.0f%%", temp_t, temp_h);
-            display.println(lineBuffer);
-
-            // Line 2: BPM
-            snprintf(lineBuffer, sizeof(lineBuffer), "BPM:%.0f", temp_bpm);
-            display.println(lineBuffer);
-
-            // Line 3: Noise
-            snprintf(lineBuffer, sizeof(lineBuffer), "Noise:%d", temp_n);
-            display.println(lineBuffer);
-
-            // Line 4: Status (Placeholder for fall/motion status)
-            // Note: MPU status logic needs shared variable update in Task_Motion if needed here.
-            display.println("Status: OK"); 
-
-            display.display();
-            xSemaphoreGive(i2cMutex);
-        } else {
-            Serial.println("OLED Task: Failed to get I2C Mutex!");
-        }
-
-        vTaskDelayUntil(&xLastWakeTime, xFrequency);  // 周期性延迟
-    }
-}
-*/
 
 
 // 动作监测
@@ -652,9 +663,9 @@ void Task_Alarm(void *pvParameters) {
     // 等待中断信号
     if (xSemaphoreTake(fallDetectedSemaphore, portMAX_DELAY) == pdTRUE) {
       Serial.println("ALARM TRIGGERED!");
-//      digitalWrite(buzzerPin, HIGH);
+//       digitalWrite(buzzerPin, HIGH);
       vTaskDelay(pdMS_TO_TICKS(2000));
-//      digitalWrite(buzzerPin, LOW);
+//       digitalWrite(buzzerPin, LOW);
     }
   }
 }
@@ -669,121 +680,3 @@ void IRAM_ATTR MPU_ISR() {
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken); // 立即进行上下文切换
   }
 }
-
-/*
-//MQTT上传
-void Task_MqttPublish(void *pvParameters) {
-    const TickType_t xFrequency = pdMS_TO_TICKS(PUBLISH_INTERVAL_MS);
-    TickType_t xLastWakeTime = xTaskGetTickCount();
-
-    while (1) {
-        vTaskDelayUntil(&xLastWakeTime, xFrequency); // 每 30s
-
-        if (WiFi.status() != WL_CONNECTED || !mqttClient.isConnected()) {
-             Serial.println("MqttPublish: Not connected. Skipping publish.");
-             continue; 
-        }
-
-        StaticJsonDocument<256> doc; 
-        String payload; 
-        float noise_avg_calculated = 0.0;
-
-        if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
-          doc["bpm"] = g_bpm;
-          doc["temperature"] = g_temp;
-          doc["humidity"] = g_hum;
-          doc["noise_peak"] = g_noise_peak; // 读取 30s 峰值
-
-          if (g_noise_sample_count > 0) {
-              noise_avg_calculated = (float)(g_noise_sum / g_noise_sample_count);
-          }
-          
-          doc["noise_avg"] = noise_avg_calculated;
-          g_noise_peak = 0;
-          g_noise_sum = 0.0;
-          g_noise_sample_count = 0;
-          xSemaphoreGive(sensorDataMutex); // 立即释放
-        } else {
-          Serial.println("MqttPublish: Failed to get data mutex. Skipping publish.");
-          continue;
-        }
-
-        serializeJson(doc, payload);
-        Serial.print("Publishing MQTT: ");
-        Serial.println(payload);
-        // 调用 C++ 对象的 publish 方法
-        // 参数通常是: topic, payload, qos, retained
-        bool success = mqttClient.publish(mqtt_topic, payload.c_str(), 1, false); // QoS 1, not retained
-
-        if (success) {
-            Serial.println("Publish successful!");
-        } else {
-            Serial.println("Publish failed!");
-        }
-    }
-}
-*/
-
-// <------------------------------------------------------------------------------  HTTP
-//数据上传
-/*
-void Task_UploadData(void *pvParameters) {
-  const TickType_t xFrequency = pdMS_TO_TICKS(30000); 
-  TickType_t xLastWakeTime = xTaskGetTickCount();
-
-  while(1) {
-    vTaskDelayUntil(&xLastWakeTime, xFrequency); //每30s
-
-    if (WiFi.status() != WL_CONNECTED) {
-      Serial.println("UploadTask: WiFi disconnected. Skipping upload.");
-      continue; 
-    }
-
-    // 准备 JSON 数据
-    StaticJsonDocument<256> doc; // 创建一个 JSON 文档
-    String payload; // 用于存储序列化后的 JSON 字符串
-
-    // 从全局变量读取数据
-  // ----------------------------------------------------
-  // --- 只读取每30s瞬间的global variable ---
-  // ----------------------------------------------------
-    if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
-        doc["bpm"] = g_bpm;
-        doc["temperature"] = g_temp;
-        doc["humidity"] = g_hum;
-        doc["noise"] = g_noise;
-        xSemaphoreGive(sensorDataMutex); // 立即释放
-    } else {
-        Serial.println("UploadTask: Failed to get data mutex. Skipping upload.");
-        continue;
-    }
-
-    //将 JSON 文档序列化为字符串
-    serializeJson(doc, payload);
-    Serial.print("Uploading payload: ");
-    Serial.println(payload);
-
-    //发起 HTTP POST 请求
-    HTTPClient http;
-    http.begin(serverUrl);
-    http.addHeader("Content-Type", "application/json"); 
-    int httpCode = http.POST(payload);
-
-    //检查服务器响应
-    if (httpCode > 0) {
-      if (httpCode == HTTP_CODE_OK) { // HTTP 200
-        String response = http.getString();
-        Serial.println("Upload successful! Server response:");
-        Serial.println(response);
-      } else {
-        Serial.printf("Upload failed, HTTP error code: %d\n", httpCode);
-      }
-    } else {
-      Serial.printf("Upload failed, HTTPClient error: %s\n", http.errorToString(httpCode).c_str());
-    }
-
-    //释放 HTTPClient 资源
-    http.end();   //结束对话
-  }
-}
-*/

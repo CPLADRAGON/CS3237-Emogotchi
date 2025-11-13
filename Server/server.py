@@ -46,7 +46,7 @@ MQTT_BROKER_HOST = "localhost"  # Runs on the same machine as Flask
 MQTT_BROKER_PORT = 1883
 # --- MODIFIED: Matched topic to Arduino ---
 MQTT_DATA_TOPIC = "esp32/sensor_data"  # <<< Topic to LISTEN on
-MQTT_COMMAND_TOPIC = "emogotchi/window/command"  # <<< Topic to SEND on
+MQTT_COMMAND_TOPIC = "esp32/prediction"  # <<< Topic to SEND on
 STRESS_LEVEL_TO_TRIGGER = "Sad"  # Or "Stressed"
 
 # --- This function will be called when we get a message ---
@@ -108,10 +108,10 @@ def on_message(client, userdata, msg):
 
                 # --- 3. Publish a command if "Stressed" ---
                 if prediction_result == STRESS_LEVEL_TO_TRIGGER:
-                    command = "OPEN"
+                    command = prediction_result
                     mqtt_client.publish(MQTT_COMMAND_TOPIC, command)
                     print(
-                        f"Published command '{command}' to topic '{MQTT_COMMAND_TOPIC}'")
+                        f"Published prediction '{command}' to topic '{MQTT_COMMAND_TOPIC}'")
 
             except Exception as e:
                 print(f"Error during prediction: {e}")
