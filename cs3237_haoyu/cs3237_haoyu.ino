@@ -337,40 +337,47 @@ void Task_OLED(void *pvParameters)
 }
 
 // --- MQTT Callback Function (FIXED) ---
-void mqttCallback(char *topic, byte *payload, unsigned int length)
-{
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
   // Convert payload to a String
   String message = "";
-  for (int i = 0; i < length; i++)
-  {
+  for (int i = 0; i < length; i++) {
     message += (char)payload[i];
   }
 
   Serial.printf("MQTT Callback: Topic [%s]: %s\n", topic, message.c_str());
 
   // Check if the message is on the command topic
-  if (String(topic) == mqtt_command_topic)
-  {
+  if (String(topic) == mqtt_command_topic) {
+    
+    // --- ADDED: Parse the "Emotion:Score" format ---
+    int separatorIndex = message.indexOf(':');
+    
+    // Check if the separator was found
+    if (separatorIndex != -1) {
+      String emotion = message.substring(0, separatorIndex);
+      String scoreStr = message.substring(separatorIndex + 1);
+      float happinessScore = scoreStr.toFloat();
 
-    // --- CHANGED: Assign enum values (volatile-safe) ---
-    if (message == "Sad")
-    {
-      g_currentState = STATE_STRESSED; // <-- This is safe
-      Serial.println("State set to STRESSED (from 'Sad')");
-    }
-    else if (message == "Happy")
-    {
-      g_currentState = STATE_HAPPY; // <-- This is safe
-      Serial.println("State set to HAPPY");
-    }
-    else if (message == "Normal")
-    {
-      g_currentState = STATE_NORMAL; // <-- This is safe
-      Serial.println("State set to NORMAL");
+      Serial.printf("Received Emotion: %s, Score: %.1f\n", emotion.c_str(), happinessScore);
+
+      // --- Use the 'emotion' string for state logic ---
+      if (emotion == "Sad") { 
+        g_currentState = STATE_STRESSED; // Map "Sad" to "Stressed" LED
+        Serial.println("State set to STRESSED (from 'Sad')");
+      } 
+      else if (emotion == "Happy") {
+        g_currentState = STATE_HAPPY;
+        Serial.println("State set to HAPPY");
+      }
+      else if (emotion == "Normal") {
+        g_currentState = STATE_NORMAL;
+        Serial.println("State set to NORMAL");
+      }
+    } else {
+      Serial.println("Error: Received message in unknown format (expected 'Emotion:Score')");
     }
   }
 }
-
 void reconnectMQTT()
 {
   while (!client.connected())
