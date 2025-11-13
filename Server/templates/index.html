@@ -439,10 +439,12 @@
                         borderColor: 'rgba(115, 218, 202, 1)',
                         backgroundColor: gradient,
                         fill: true,
-                        tension: 0.4,
                         pointRadius: 2,
                         pointBackgroundColor: 'rgba(115, 218, 202, 1)',
-                        stepped: true,
+
+                        /* --- MODIFIED: Use a smooth, non-stepped line --- */
+                        tension: 0.4,
+                        stepped: false,
                     }]
                 },
                 options: {
@@ -457,11 +459,12 @@
                         },
                         x: {
                             type: 'time',
+                            /* --- MODIFIED: Time scale for 24h view --- */
                             time: {
-                                unit: 'hour',
+                                unit: 'hour', // Still good to group by hour
                                 tooltipFormat: 'MMM d, HH:mm',
                                 displayFormats: {
-                                    hour: 'HH:mm' // Show '14:00', '15:00'
+                                    hour: 'HH:mm'
                                 }
                             },
                             ticks: { color: '#a9b1d6' },
@@ -474,7 +477,6 @@
                 }
             });
         }
-
         // --- Function to update trendline (every 60s) ---
         async function updateTrendline() {
             try {

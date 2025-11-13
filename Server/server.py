@@ -203,20 +203,12 @@ def get_trend_data():
         one_day_ago = datetime.now() - timedelta(hours=24)
 
         # 4. Filter the DataFrame for the last 24 hours
-        df_filtered = df[df['timestamp'] >= one_day_ago].copy()
+        df_filtered = df[df['timestamp'] >= one_day_ago]
 
-        # 5. --- NEW: Resample to hourly average ---
-        # Set timestamp as the index for resampling
-        df_filtered.set_index('timestamp', inplace=True)
+        # 5. (REMOVED) We no longer resample and average
 
-        # Resample by hour ('H'), get the mean, and remove any NaN rows
-        df_hourly_avg = df_filtered.resample('H').mean().dropna()
-
-        # Reset index to get 'timestamp' back as a column for JSON
-        df_hourly_avg.reset_index(inplace=True)
-
-        # 6. Return the filtered, averaged data as JSON
-        return jsonify(df_hourly_avg.to_dict(orient='records'))
+        # 6. Return the raw, filtered data as JSON
+        return jsonify(df_filtered.to_dict(orient='records'))
 
     except FileNotFoundError:
         return jsonify([])  # Send empty list if file doesn't exist yet
