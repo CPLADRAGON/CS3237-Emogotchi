@@ -221,21 +221,22 @@ def get_trend_data():
         # errors='coerce' will turn any bad timestamps into 'NaT' (Not a Time)
         df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
 
-        # --- [ THIS IS THE ROBUST FIX ] ---
-        # 1. Drop any rows where the timestamp was bad
+        # 3. Drop any rows where the timestamp was bad
         df.dropna(subset=['timestamp'], inplace=True)
-        # 2. Fill any NaN scores with None (which becomes 'null' in JSON)
-        df['happiness_score'] = df['happiness_score'].fillna(value=None)
-        # --- [ END OF FIX ] ---
 
-        # 3. Get the cutoff for 24 hours ago
+        # 4. Get the cutoff for 24 hours ago
         one_day_ago = datetime.now() - timedelta(hours=24)
 
-        # 4. Filter the DataFrame for the last 24 hours
+        # 5. Filter the DataFrame for the last 24 hours
         df_filtered = df[df['timestamp'] >= one_day_ago]
 
-        # 5. Return the raw, filtered, and CLEANED data as JSON
-        return jsonify(df_filtered.to_dict(orient='records'))
+        # --- [ THIS IS THE NEW FIX ] ---
+        # Replace all numpy.NaN values with Python's None (which becomes null)
+        df_final = df_filtered.replace({np.nan: None})
+        # --- [ END OF FIX ] ---
+
+        # 6. Return the raw, filtered, and CLEANED data as JSON
+        return jsonify(df_final.to_dict(orient='records'))
 
     except FileNotFoundError:
         return jsonify([])  # Send empty list if file doesn't exist yet
