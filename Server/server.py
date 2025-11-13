@@ -75,7 +75,7 @@ def get_happiness_score(sensor_sequence):
     # Hard thresholds
     if latest_reading['bpm'] > 130 and latest_reading['in_motion'] == 0:
         emotion_score = 10.0
-    elif latest_reading['temperature'] > 32:
+    elif latest_reading['temperature'] > 36:
         emotion_score = 15.0
 
     # LSTM Model
@@ -91,7 +91,7 @@ def get_happiness_score(sensor_sequence):
             emotion_score = target_scaler.inverse_transform(
                 scaled_score.reshape(-1, 1))[0][0]
 
-            # --- [ THIS IS THE FIX ] ---
+            # --- [ THIS IS THE CRITICAL FIX ] ---
             # Check for NaN *before* clipping
             if np.isnan(emotion_score):
                 print("Warning: Model returned NaN. Defaulting to 50.")
@@ -218,7 +218,15 @@ def get_trend_data():
         df = pd.read_csv(TREND_CSV_FILE_PATH)
 
         # 2. Convert timestamp column to datetime objects
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        # errors='coerce' will turn any bad timestamps into 'NaT' (Not a Time)
+        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+
+        # --- [ THIS IS THE ROBUST FIX ] ---
+        # 1. Drop any rows where the timestamp was bad
+        df.dropna(subset=['timestamp'], inplace=True)
+        # 2. Fill any NaN scores with None (which becomes 'null' in JSON)
+        df['happiness_score'] = df['happiness_score'].fillna(value=None)
+        # --- [ END OF FIX ] ---
 
         # 3. Get the cutoff for 24 hours ago
         one_day_ago = datetime.now() - timedelta(hours=24)
@@ -226,15 +234,8 @@ def get_trend_data():
         # 4. Filter the DataFrame for the last 24 hours
         df_filtered = df[df['timestamp'] >= one_day_ago]
 
-        # 5. (REMOVED) We no longer resample and average
-
-        # --- [ THIS IS THE CRITICAL FIX ] ---
-        # Replace any NaN/NaT with None, which becomes 'null' in JSON
-        df_final = df_filtered.where(pd.notnull(df_filtered), None)
-        # --- [ END OF FIX ] ---
-
-        # 6. Return the raw, filtered, and CLEANED data as JSON
-        return jsonify(df_final.to_dict(orient='records'))
+        # 5. Return the raw, filtered, and CLEANED data as JSON
+        return jsonify(df_filtered.to_dict(orient='records'))
 
     except FileNotFoundError:
         return jsonify([])  # Send empty list if file doesn't exist yet
