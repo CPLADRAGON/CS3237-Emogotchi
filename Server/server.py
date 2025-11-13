@@ -24,9 +24,10 @@ latest_prediction = "Waiting for data..."  # <-- MODIFIED: New default message
 latest_happiness_score = 0.0  # <-- ADDED: To store the 0-100 score
 
 # --- [ MODIFIED: Load New LSTM Model and Scalers ] ---
-MODEL_PATH = 'emogotchi_lstm_regressor.keras'
-SCALER_PATH = 'sensor_scaler.pkl'
-TARGET_SCALER_PATH = 'target_scaler.pkl'
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(SCRIPT_DIR, 'emogotchi_lstm_regressor.keras')
+SCALER_PATH = os.path.join(SCRIPT_DIR, 'sensor_scaler.pkl')
+TARGET_SCALER_PATH = os.path.join(SCRIPT_DIR, 'target_scaler.pkl')
 
 # These are the 6 features the model was trained on, in order.
 features = ['bpm', 'temperature', 'humidity', 'noise', 'ldr', 'in_motion']
@@ -53,6 +54,15 @@ MQTT_DATA_TOPIC = "esp32/sensor_data"
 MQTT_COMMAND_TOPIC = "esp32/prediction"
 
 # --- [ ADDED: Prediction functions from your notebook ] ---
+
+
+def on_connect(client, userdata, flags, rc):
+    if rc == 0:
+        print("Connected to MQTT Broker!")
+        client.subscribe(MQTT_DATA_TOPIC)
+        print(f"Subscribed to topic: {MQTT_DATA_TOPIC}")
+    else:
+        print(f"Failed to connect to MQTT Broker, return code {rc}")
 
 
 def get_happiness_score(sensor_sequence):
@@ -173,8 +183,8 @@ def on_message(client, userdata, msg):
 
             print(f"Prediction: Score={score}, Emotion='{prediction_result}'")
 
-            # 7. Publish the command
-            command = prediction_result
+            # 7. Publish the command (Emotion:Score)
+            command = f"{prediction_result}:{score}"  # <-- CHANGED: New format
             mqtt_client.publish(MQTT_COMMAND_TOPIC, command)
             print(
                 f"Published prediction '{command}' to topic '{MQTT_COMMAND_TOPIC}'")
@@ -197,14 +207,6 @@ except Exception as e:
     print(f"Could not connect to MQTT Broker: {e}")
     mqtt_client = None
 
-
-def on_connect(client, userdata, flags, rc):
-    if rc == 0:
-        print("Connected to MQTT Broker!")
-        client.subscribe(MQTT_DATA_TOPIC)
-        print(f"Subscribed to topic: {MQTT_DATA_TOPIC}")
-    else:
-        print(f"Failed to connect to MQTT Broker, return code {rc}")
 
 # --- Flask Routes for the Web UI ---
 
