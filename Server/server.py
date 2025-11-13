@@ -10,7 +10,7 @@ import os
 import threading
 import numpy as np
 from tensorflow.keras.models import load_model
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # --- Flask, Data Storage ---
 app = Flask(__name__)
@@ -122,7 +122,9 @@ def on_message(client, userdata, msg):
 
     try:
         data = json.loads(msg.payload.decode())
-        data['timestamp'] = time.strftime('%Y-%m-%d %H:%M:%S')
+
+        # --- [ MODIFIED: Use timezone-aware ISO format ] ---
+        data['timestamp'] = datetime.now(timezone.utc).isoformat()
         latest_data = data  # Store for /data endpoint
 
         # --- Prediction Logic ---
@@ -153,14 +155,12 @@ def on_message(client, userdata, msg):
             mqtt_client.publish(MQTT_COMMAND_TOPIC, command)
             print(f"Prediction: {command}")
 
-            # --- [ LOGGING BLOCK (MOVED) ] ---
-            # Now we log the data *with* the score
+            # --- [ LOGGING BLOCK ] ---
             try:
                 with csv_lock:
                     # Log to main sensor_data.csv
                     with open(CSV_FILE_PATH, 'a', newline='') as f:
                         writer = csv.DictWriter(f, fieldnames=CSV_HEADERS)
-                        # Write the latest data row
                         writer.writerow({key: data.get(key)
                                         for key in CSV_HEADERS})
 
@@ -217,23 +217,25 @@ def get_trend_data():
         # 1. Read the trend data
         df = pd.read_csv(TREND_CSV_FILE_PATH)
 
-        # 2. Convert timestamp column to datetime objects
-        # errors='coerce' will turn any bad timestamps into 'NaT' (Not a Time)
+        # 2. Convert timestamp column to datetime objects (auto-parses ISO string)
         df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
 
         # 3. Drop any rows where the timestamp was bad
         df.dropna(subset=['timestamp'], inplace=True)
 
-        # 4. Get the cutoff for 24 hours ago
-        one_day_ago = datetime.now() - timedelta(hours=24)
+        # --- [ MODIFIED: Use timezone-aware cutoff ] ---
+        one_day_ago = datetime.now(timezone.utc) - timedelta(hours=24)
 
-        # 5. Filter the DataFrame for the last 24 hours
+        # 4. Filter the DataFrame for the last 24 hours
         df_filtered = df[df['timestamp'] >= one_day_ago]
 
-        # --- [ THIS IS THE NEW FIX ] ---
-        # Replace all numpy.NaN values with Python's None (which becomes null)
-        df_final = df_filtered.replace({np.nan: None})
-        # --- [ END OF FIX ] ---
+        # 5. Replace any NaN/NaT with None, which becomes 'null' in JSON
+        df_final = df_filtered.where(pd.notnull(df_filtered), None)
+
+        # --- [ ADDED: Convert back to ISO string for JSON ] ---
+        # This ensures JavaScript gets a standard format
+        df_final['timestamp'] = df_final['timestamp'].apply(
+            lambda x: x.isoformat() if pd.notnull(x) else None)
 
         # 6. Return the raw, filtered, and CLEANED data as JSON
         return jsonify(df_final.to_dict(orient='records'))
