@@ -71,13 +71,18 @@ def get_happiness_score(sensor_sequence):
         return 50.0
     emotion_score = -1
     latest_reading = sensor_sequence[-1]
+
+    # Hard thresholds
     if latest_reading['bpm'] > 130 and latest_reading['in_motion'] == 0:
         emotion_score = 10.0
     elif latest_reading['temperature'] > 32:
         emotion_score = 15.0
+
+    # LSTM Model
     if emotion_score == -1:
         try:
-            data_list = [[reading[f] for f in features]
+            # Use .get(f, 0) to prevent errors if a key is missing
+            data_list = [[reading.get(f, 0) for f in features]
                          for reading in sensor_sequence]
             data_array = np.array(data_list)
             data_scaled = feature_scaler.transform(data_array)
@@ -85,7 +90,16 @@ def get_happiness_score(sensor_sequence):
             scaled_score = model.predict(data_lstm, verbose=0)[0]
             emotion_score = target_scaler.inverse_transform(
                 scaled_score.reshape(-1, 1))[0][0]
+
+            # --- [ THIS IS THE FIX ] ---
+            # Check for NaN *before* clipping
+            if np.isnan(emotion_score):
+                print("Warning: Model returned NaN. Defaulting to 50.")
+                emotion_score = 50.0
+            # --- [ END OF FIX ] ---
+
             emotion_score = np.clip(emotion_score, 0, 100)
+
         except Exception as e:
             print(f"Error during LSTM prediction: {e}")
             emotion_score = 50.0
@@ -108,39 +122,49 @@ def on_message(client, userdata, msg):
 
     try:
         data = json.loads(msg.payload.decode())
-
         data['timestamp'] = time.strftime('%Y-%m-%d %H:%M:%S')
-        latest_data = data
-
-        # --- Sensor Data CSV (for full data) ---
-        try:
-            with csv_lock:
-                row_data = {key: data.get(
-                    key) for key in CSV_HEADERS if key != 'happiness_score'}
-                with open(CSV_FILE_PATH, 'a', newline='') as f:
-                    writer = csv.DictWriter(f, fieldnames=CSV_HEADERS)
-                    writer.writerow(row_data)
-        except Exception as e:
-            print(f"Error writing to sensor CSV: {e}")
+        latest_data = data  # Store for /data endpoint
 
         # --- Prediction Logic ---
-        sensor_data_history.append(data)
+        sensor_data_history.append(data)  # Add data to the 10-item deque
+
         if len(sensor_data_history) < TIME_STEPS:
+            # Not enough data yet
             print(
                 f"Gathering data... {len(sensor_data_history)}/{TIME_STEPS} samples.")
             latest_prediction = "Waiting for data..."
             latest_happiness_score = 0.0
+
         else:
+            # --- We have 10 samples, run the prediction ---
             sequence = list(sensor_data_history)
             score = get_happiness_score(sequence)
+
+            # Update global state
             latest_happiness_score = score
             prediction_result = map_score_to_emotion(score)
             latest_prediction = prediction_result
 
+            # Add the score to the 'data' dict *before* logging
             data['happiness_score'] = score
 
+            # Publish command to ESP32
+            command = f"{prediction_result}:{score}"
+            mqtt_client.publish(MQTT_COMMAND_TOPIC, command)
+            print(f"Prediction: {command}")
+
+            # --- [ LOGGING BLOCK (MOVED) ] ---
+            # Now we log the data *with* the score
             try:
                 with csv_lock:
+                    # Log to main sensor_data.csv
+                    with open(CSV_FILE_PATH, 'a', newline='') as f:
+                        writer = csv.DictWriter(f, fieldnames=CSV_HEADERS)
+                        # Write the latest data row
+                        writer.writerow({key: data.get(key)
+                                        for key in CSV_HEADERS})
+
+                    # Log to trend.csv
                     trend_row = {
                         'timestamp': data['timestamp'], 'happiness_score': score}
                     with open(TREND_CSV_FILE_PATH, 'a', newline='') as f:
@@ -148,11 +172,8 @@ def on_message(client, userdata, msg):
                             f, fieldnames=TREND_CSV_HEADERS)
                         writer.writerow(trend_row)
             except Exception as e:
-                print(f"Error writing to trend CSV: {e}")
-
-            command = f"{prediction_result}:{score}"
-            mqtt_client.publish(MQTT_COMMAND_TOPIC, command)
-            print(f"Prediction: {command}")
+                print(f"Error writing to CSV: {e}")
+            # --- [ END OF LOGGING BLOCK ] ---
 
     except Exception as e:
         print(f"An error occurred in on_message: {e}")
@@ -207,15 +228,19 @@ def get_trend_data():
 
         # 5. (REMOVED) We no longer resample and average
 
-        # 6. Return the raw, filtered data as JSON
-        return jsonify(df_filtered.to_dict(orient='records'))
+        # --- [ THIS IS THE FIX ] ---
+        # Replace any NaN/NaT with None, which becomes 'null' in JSON
+        df_final = df_filtered.where(pd.notnull(df_filtered), None)
+        # --- [ END OF FIX ] ---
+
+        # 6. Return the raw, filtered, and CLEANED data as JSON
+        return jsonify(df_final.to_dict(orient='records'))
 
     except FileNotFoundError:
         return jsonify([])  # Send empty list if file doesn't exist yet
     except Exception as e:
         print(f"Error in /trend_data: {e}")
         return jsonify({"error": str(e)}), 500
-
 # --- CSV Init Functions ---
 
 
