@@ -42,6 +42,8 @@ Servo windows;
 // MQTT/Score
 volatile float g_happinessScore = 50.0;
 volatile bool g_newScoreAvailable = false;
+volatile bool g_sadStateTriggered = false; //
+volatile bool g_relaxModeActive = false;
 
 static const unsigned char PROGMEM icon_normal_32x32[] = {
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x7e, 0x00, 0x00, 0x03, 0xff, 0xc0, 0x00, 0x0f, 0xff, 0xf0, 0x00, 
@@ -133,26 +135,44 @@ void loop() {
 
     // 根据分数更新 STRESS_PIN
     if (g_happinessScore <= 33.0) {
-      digitalWrite(STRESS_PIN_0, HIGH);
-      digitalWrite(STRESS_PIN_1, LOW);
-    } else if (g_happinessScore <= 67.0) {
-      digitalWrite(STRESS_PIN_0, LOW);
+      // 
+      // 检查我们是否 *刚* 进入悲伤状态 (g_sadStateTriggered 标志为 false)
+      if (!g_sadStateTriggered) {
+        Serial.println("State Change: SAD. Sending trigger ONCE.");
+        digitalWrite(STRESS_PIN_0, HIGH); //
+        g_sadStateTriggered = true;       // 
+      }
+      digitalWrite(STRESS_PIN_1, LOW);  // Pin 1 
+    } 
+    else if (g_happinessScore <= 67.0) {
+      Serial.println("State Change: NORMAL. Resetting trigger.");
+      digitalWrite(STRESS_PIN_0, LOW); //
       digitalWrite(STRESS_PIN_1, HIGH);
-    } else {
-      digitalWrite(STRESS_PIN_0, LOW);
-      digitalWrite(STRESS_PIN_1, LOW);
+      g_sadStateTriggered = false;      // 
+    } 
+    else {
+      // 
+      Serial.println("State Change: HAPPY. Resetting trigger.");
+      digitalWrite(STRESS_PIN_0, LOW);  //
+      digitalWrite(STRESS_PIN_1, LOW);  //
+      g_sadStateTriggered = false;      // 
     }
   }
 
   // 3. --- 处理引脚输入 (按钮) ---
   if (digitalRead(RELAX_PIN) == LOW && g_happinessScore < 34) {
-    Relax_mode();
+    g_relaxModeActive = true;
   } 
-  // 检查 RGB_PIN
-  else if (digitalRead(RGB_PIN) == LOW) {
-    showRGB(255, 255, 255);
+  if (g_happinessScore >= 34) {
+    g_relaxModeActive = false; 
   }
-  // 如果两个按钮都没按，则关闭 RGB
+  // 检查 RGB_PIN
+  if (g_relaxModeActive) {
+    Relax_mode();
+  }
+  else if (digitalRead(RGB_PIN) == HIGH) {
+    showRGB(255, 255, 255); 
+  }
   else {
     showRGB(0, 0, 0);
   }
@@ -295,7 +315,7 @@ void showRGB(int r, int g, int b) {
 
 
 void Relax_mode() {
-  float pulse = (sin(millis() * 0.2) + 1.0) / 2.0;
+  float pulse = (sin(millis() * 0.002) + 1.0) / 2.0;
   int Value = 50 + (pulse * 205);
   showRGB(0, Value, Value); // Breathing
 }
