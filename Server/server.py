@@ -11,6 +11,7 @@ import threading
 import numpy as np
 from tensorflow.keras.models import load_model
 from datetime import datetime, timedelta, timezone
+import requests
 
 # --- Flask, Data Storage ---
 app = Flask(__name__)
@@ -47,6 +48,12 @@ TREND_CSV_FILE_PATH = os.path.join(SCRIPT_DIR, 'happiness_trend.csv')
 TREND_CSV_HEADERS = ['timestamp', 'happiness_score']
 csv_lock = threading.Lock()
 
+# --- [ ADDED: Telegram Notification Setup ] ---
+BOT_TOKEN = "7393315205:AAEos38jymwEA4lhCUZQBWfZY8U5ZxdwlqY"
+CHAT_ID = "-5025276308"  # Must be a string, e.g., "-100123456789"
+NOTIFICATION_COOLDOWN_SEC = 10
+g_last_notification_time = 0.0  # Global variable to track cooldown
+
 # --- MQTT Configuration ---
 MQTT_BROKER_HOST = "localhost"
 MQTT_BROKER_PORT = 1883
@@ -63,6 +70,29 @@ def on_connect(client, userdata, flags, rc):
         print(f"Subscribed to topic: {MQTT_DATA_TOPIC}")
     else:
         print(f"Failed to connect to MQTT Broker, return code {rc}")
+
+# --- [ ADDED: Telegram Helper Function ] ---
+
+
+def send_telegram_notification(message):
+    """Sends a message to Telegram in a non-blocking thread."""
+    def send_message_in_thread():
+        try:
+            url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+            payload = {"chat_id": CHAT_ID, "text": message}
+            response = requests.post(
+                url, data=payload, timeout=5)  # 5 sec timeout
+            if response.status_code == 200:
+                print("Telegram notification sent successfully.")
+            else:
+                print(
+                    f"Error sending Telegram notification: {response.status_code} - {response.text}")
+        except Exception as e:
+            print(f"Exception while sending Telegram notification: {e}")
+
+    # Start the send in a new thread to avoid blocking the server
+    thread = threading.Thread(target=send_message_in_thread)
+    thread.start()
 
 
 def get_happiness_score(sensor_sequence):
@@ -141,6 +171,19 @@ def on_message(client, userdata, msg):
             # --- We have 10 samples, run the prediction ---
             sequence = list(sensor_data_history)
             score = get_happiness_score(sequence)
+
+            # --- [ ADDED: Telegram Alert Logic ] ---
+            global g_last_notification_time
+            if score < 20:  # Your threshold
+                current_time = time.time()
+                # Check if cooldown has passed
+                if (current_time - g_last_notification_time) > NOTIFICATION_COOLDOWN_SEC:
+                    print(f"Score is {score}, triggering Telegram alert.")
+                    g_last_notification_time = current_time  # Reset cooldown
+                    message = f"🚨 LOW HAPPINESS ALERT 🚨\n\nDevice '{data.get('device_name', 'ESP32')}' reports a happiness score of: {score}"
+                    send_telegram_notification(message)
+                else:
+                    print(f"Score is {score}, but in notification cooldown.")
 
             # Update global state
             latest_happiness_score = score
