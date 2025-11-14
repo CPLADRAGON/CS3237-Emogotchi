@@ -174,7 +174,7 @@ def on_message(client, userdata, msg):
 
             # --- [ ADDED: Telegram Alert Logic ] ---
             global g_last_notification_time
-            if score < 30:  # Your threshold
+            if score < 33:
                 current_time = time.time()
                 # Check if cooldown has passed
                 if (current_time - g_last_notification_time) > NOTIFICATION_COOLDOWN_SEC:
