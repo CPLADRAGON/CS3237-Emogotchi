@@ -241,6 +241,17 @@ except Exception as e:
 def index():
     return render_template('index.html')
 
+# --- [ ADDED: Test Endpoint for Telegram ] ---
+
+
+@app.route('/test_alert')
+def test_alert():
+    """Manually triggers a test notification."""
+    print("--- MANUAL ALERT TEST TRIGGERED ---")
+    message = "🔔 This is a test notification from the Emogotchi server. If you see this, the bot is working!"
+    send_telegram_notification(message)
+    return "Test alert sent! Check your Telegram group."
+
 
 @app.route('/data')
 def get_data():
