@@ -1,6 +1,6 @@
 # Emogotchi - CS3237 IoT Project (Team 06)
 
-**Course:** CS3237 Introduction to Internet of Things (AY2025/26 Semester 1)
+**Course:** CS3237 Introduction to Internet of Things (AY2025/26 Semester 1)  
 **Team Members:** DONG HUAISHUO, LI ZHUOLUN, WANG BOYU, ZHANG HAOYU
 
 ---
@@ -9,39 +9,167 @@
 
 Students often spend long hours studying and can become unaware of accumulating environmental and physiological stress. This lack of awareness can lead to reduced productivity and long-term health issues.
 
-**Emogotchi** is a real-time monitoring system designed to help students understand their well-being. The system uses a multi-sensor ESP32 device to capture physiological data (BPM, motion) and environmental data (temperature, humidity, noise, light). This data is published via MQTT to a cloud server, which uses an **LSTM (Long Short-Term Memory) machine learning model** to predict a "happiness score" based on the last 10 data points.
+**Emogotchi** is a real-time, multi-device IoT system designed to monitor a student's well-being. The system uses a multi-sensor **Main ESP32** device to capture physiological data (BPM, motion) and environmental data (temperature, humidity, noise, light).
 
-This prediction is then sent back to the ESP32, providing a **closed-loop feedback system**. The device displays the user's current stress state (e.g., "Happy", "Normal", "Sad") on an OLED screen and a dynamic RGB LED. The server also logs all data, provides a live web dashboard, and can send critical alerts via **Telegram**.
+This data is published via MQTT to a cloud server, which uses a time-series **LSTM (Long Short-Term Memory) machine learning model** to predict a "happiness score" (0-100) based on the last 10 data points.
+
+This prediction is then sent back to two subscriber devices, creating a **closed-loop feedback system**:
+1.  The **Main ESP32 (Emogotchi)** displays the user's current emotion (e.g., "Happy", "Normal", "Sad") on its OLED screen and a dynamic RGB LED.
+2.  A **Second ESP32 (Smart Home Hub)** receives the same data, displays an emoticon on its own OLED, and can trigger "relax mode" routines (e.g., mood lighting, or servos) to actively improve the user's environment.
+
+The server also logs all data to CSV, provides a live web dashboard with 24-hour trend analysis, and can send critical alerts via **Telegram** if the user's happiness score is too low.
 
 ## 2. System Architecture
 
-The project is built on a high-performance, real-time MQTT architecture.
+The project is built on a high-performance, real-time **Publish/Subscribe (Pub/Sub) model** using an MQTT broker.
 
-1.  **Main ESP32 (Publisher/Subscriber):**
-    * Runs **FreeRTOS** to manage 10+ concurrent tasks (sensors, display, network) across both CPU cores.
+1.  **Main ESP32 (Emogotchi Device):**
+    * **Publisher/Subscriber**
+    * Runs **FreeRTOS** to manage 10 concurrent tasks (sensors, display, network) across both CPU cores.
     * **Core 1 (Sensors):** Gathers data from the MPU6050 (interrupt-driven), DHT11, Pulse Sensor, Sound Sensor, and LDR.
     * **Core 0 (Network):** Manages Wi-Fi and MQTT.
-    * **Publishes** a JSON payload of averaged sensor data to the `esp32/sensor_data` topic every 30 seconds.
+    * **Publishes** a JSON payload of sensor data to the `esp32/sensor_data` topic.
     * **Subscribes** to the `esp32/prediction` topic to receive real-time commands from the server.
+    * Displays the received emotion on its OLED screen and RGB LED.
 
 2.  **Cloud Server (DigitalOcean Droplet):**
+    * **Broker & Brain**
     * Runs the **Mosquitto MQTT Broker** as the central message hub.
-    * Runs a **Python Flask Server** (`server.py`) as the system's "brain":
+    * Runs a **Python Flask Server** (`server.py`):
         * **Subscribes** to `esp32/sensor_data`.
         * Collects a sequence of 10 data points.
-        * Feeds the sequence into a trained **Keras/TensorFlow LSTM model** to predict a "happiness score" (0-100).
-        * Maps the score to a state ("Happy", "Normal", "Sad").
-        * **Publishes** the state and score (e.g., `"Sad:25.0"`) back to the `esp32/prediction` topic.
+        * Feeds the sequence into a trained **Keras/TensorFlow LSTM model** (`emogotchi_lstm_regressor.h5`) to predict a "happiness score" (0-100).
+        * Maps the score to an emotion ("Happy", "Normal", "Sad").
+        * **Publishes** the emotion and score (e.g., `"Sad:22.5"`) back to the `esp32/prediction` topic.
         * Sends a **Telegram alert** if the score drops below a critical threshold.
         * Logs all sensor data to `sensor_data.csv` and trend data to `happiness_trend.csv`.
         * **Serves a web UI** at `http://<server_ip>:5000` for live data visualization.
 
-3.  **ESP32 Actuators (Feedback Loop):**
-    * The **`mqttCallback`** function on the main ESP32 receives the prediction.
-    * `Task_OLED` updates the 64x48 OLED screen with the current emotion and score.
-    * `Task_LED_Control` updates the KY-009 RGB LED with a dynamic effect (e.g., breathing green for "Happy", solid blue for "Normal", blinking red for "Sad").
+3.  **Second ESP32 (Smart Home Hub):**
+    * **Subscriber/Actuator**
+    * **Subscribes** to the `esp32/prediction` topic.
+    * Displays the received emotion as an emoticon on its own OLED.
+    * Can be triggered (by a low score and a button press) into a "Relax Mode" to control actuators like servos (simulating opening a window) or mood lighting.
+    * Also supports manual control of connected home devices (servos, LEDs) via local buttons.
 
-![A diagram showing the data flow from the ESP32 to the MQTT broker, to the Flask server, back to the broker, and finally to the display.](https://i.imgur.com/gA9mZ3e.png)
+### Data Flow Diagram
+
+```mermaid
+%% System Block Diagram for Emogotchi (CS3237 Team 06)
+graph LR
+    
+    %% --- COLUMN 1: EDGE (SENSORS) ---
+    subgraph 1. Edge (Data Collection)
+        direction TB
+        
+        USER([<fa:fa-user> </fa:fa-user> User<br>(Physiology & Environment)])
+        
+        ESP_MAIN(
+            [<fa:fa-microchip> </fa:fa-microchip> Emogotchi (ESP32-Main)]
+            ---
+            <b>Tasks (FreeRTOS Core 1):</b><br>
+            - Task_HeartRate (ADC Mutex)<br>
+            - Task_Sound (ADC Mutex)<br>
+            - Task_LDR (ADC Mutex)<br>
+            - Task_DHT<br>
+            - Task_MPU (I2C Mutex)<br>
+            - Task_Display
+            <br>
+            <b>Network (FreeRTOS Core 0):</b><br>
+            - Task_MQTT_Loop<br>
+            - Task_UploadData
+        )
+        
+        SENSORS[<fa:fa-thermometer-half> </fa:fa-thermometer-half> Sensors:<br>- Pulse (BPM)<br>- DHT11 (Temp/Hum)<br>- Sound (Noise)<br>- LDR (Light)<br>- MPU6050 (Motion)]
+        
+        USER -- Sensed By --> SENSORS -- Raw Data --> ESP_MAIN
+    end
+
+    %% --- COLUMN 2: CLOUD (BROKER & SERVER) ---
+    subgraph 2. Cloud (DigitalOcean Droplet)
+        direction TB
+        
+        BROKER(<fa:fa-rss> </fa:fa-rss> Mosquitto MQTT Broker)
+        
+        SERVER(
+            [<fa:fa-server> </fa:fa-server> Python Flask Server (server.py)]
+            ---
+            <b>Services:</b><br>
+            - MQTT Subscriber (on_message)<br>
+            - LSTM Model Prediction<br>
+            - Data Logging (CSV)<br>
+            - Telegram Alert Trigger<br>
+            - Web Dashboard API (/data)<br>
+            - MQTT Publisher (Commands)
+        )
+        
+        ML_MODEL[<fa:fa-brain> </fa:fa-brain> LSTM Model<br>(emogotchi_lstm_regressor.h5)]
+        STORAGE[<fa:fa-database> </fa:fa-database> Data Logs<br>(sensor_data.csv)<br>(happiness_trend.csv)]
+        
+        %% Cloud Data Flow
+        BROKER -- 1. Sensor JSON --> SERVER
+        SERVER -- 2. Collects 10 samples --> ML_MODEL
+        ML_MODEL -- 3. Predicts Score (e.g., 22.5) --> SERVER
+        SERVER -- 4. Logs Data --> STORAGE
+    end
+    
+    %% --- COLUMN 3: OUTPUTS & FEEDBACK ---
+    subgraph 3. Feedback & Actuation
+        direction TB
+        
+        %% Main ESP32 Feedback
+        ESP_MAIN_FB(
+            [<fa:fa-eye> </fa:fa-eye> Emogotchi Feedback]
+            ---
+            - OLED Display (Emotion + Score)<br>
+            - RGB LED (Breathing/Blinking)
+        )
+        
+        %% Smart Home Hub
+        ESP_SECOND(
+            [<fa:fa-home> </fa:fa-home> Smart Home Hub (ESP32-Second)]
+            ---
+            - MQTT Subscriber<br>
+            - Servo Control<br>
+            - OLED (Emoticon)<br>
+            - Local Button Input
+        )
+        
+        %% Web & Telegram
+        WEB_UI([<fa:fa-chart-line> </fa:fa-chart-line> Web UI (index.html)])
+        TELEGRAM([<fa:fa-paper-plane> </fa:fa-paper-plane> Telegram Alert])
+    end
+
+    %% --- GLOBAL DATA FLOWS (ARROWS) ---
+    
+    %% ESP32 to Cloud
+    ESP_MAIN -- <b>Publish:</b> esp32/sensor_data<br>(Sensor JSON) --> BROKER
+    
+    %% Cloud to Devices (Closed Loop)
+    SERVER -- <b>Publish:</b> esp32/prediction<br>("Sad:22.5") --> BROKER
+    BROKER -- <b>Subscribe:</b> esp32/prediction --> ESP_MAIN
+    BROKER -- <b>Subscribe:</b> esp32/prediction --> ESP_SECOND
+    
+    %% Cloud to User
+    SERVER -- <b>HTTP POST</b> (if Sad) --> TELEGRAM
+    SERVER -- <b>HTTP GET /data</b> --> WEB_UI
+    
+    %% Final Outputs to User
+    ESP_MAIN -- Displays --> ESP_MAIN_FB
+    ESP_SECOND -- Triggers --> ESP_SECOND
+    
+    %% Style definitions
+    classDef esp fill:#2E86C1,stroke:#FFF,color:#FFF,stroke-width:2px;
+    classDef server fill:#27AE60,stroke:#FFF,color:#FFF,stroke-width:2px;
+    classDef broker fill:#E67E22,stroke:#FFF,color:#FFF,stroke-width:2px;
+    classDef user fill:#9B59B6,stroke:#FFF,color:#FFF,stroke-width:2px;
+    classDef outputs fill:#414868,stroke:#c0caf5,color:#c0caf5,stroke-width:2px;
+
+    class ESP_MAIN,ESP_SECOND esp;
+    class SERVER,ML_MODEL,STORAGE server;
+    class BROKER broker;
+    class USER user;
+    class WEB_UI,TELEGRAM,ESP_MAIN_FB outputs;
 
 ## 3. Hardware & Wiring
 
@@ -61,6 +189,25 @@ The project is built on a high-performance, real-time MQTT architecture.
 | KY-009 RGB LED | `R -> GPIO 12`, `G -> GPIO 13`, `B -> GPIO 14`, `GND -> GND` |
 | Heartbeat LED | `LED -> GPIO 2` |
 | **Power** | `VCC -> 3.3V`, `GND -> GND` |
+
+### Second ESP32 (Smart Home Hub)
+
+| Category | Component | Pin(s) on ESP32 |
+| :--- | :--- | :--- |
+| **I2C Bus** | SCL | GPIO 22 |
+| | SDA | GPIO 21 |
+| | OLED (0.66" 64x48) | Uses I2C Bus (Address: 0x3C) |
+| **Actuators** | Servo (Door) | GPIO 15 |
+| | Servo (Window) | GPIO 16 |
+| | RGB LED | R: GPIO 12, G: GPIO 13, B: GPIO 14 |
+| **Status Pins** | Stress0 | GPIO 18 |
+| | Stress1 | GPIO 17 |
+| **Inputs** | Door Button | GPIO 25 |
+| | Window Button | GPIO 26 |
+| | RGB Button | GPIO 27 |
+| | Relax Button | GPIO 32 |
+| **Power** | VCC | 5V (VIN) |
+| | GND | GND |
 
 ---
 
