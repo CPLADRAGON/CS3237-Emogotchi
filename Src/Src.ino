@@ -22,69 +22,64 @@
 #define DHTTYPE DHT11
 #define HEART_PIN 32
 #define SOUND_PIN 34
-// #define buzzerPin 8 // 警报信号
-#define MPU_INT_PIN 4   // MPU6050 INT 引脚
-#define HEART_LED_PIN 2 // 新增: 脉搏指示灯（假设为 ESP32 内置 LED）
+// #define buzzerPin 8 // fall detection alert
+#define MPU_INT_PIN 4   // MPU6050 INT
+#define HEART_LED_PIN 2 // On_board esp32 led for pulse indication
 #define SCREEN_WIDTH 64
 #define SCREEN_HEIGHT 48
-
-// --- ADDED: RGB LED PINS ---
 #define LED_RED 12
 #define LED_GREEN 13
 #define LED_BLUE 14
 
-// 变量
-#define SAMPLE_SIZE_H 4  // 心率，4次采样
-#define SAMPLE_SIZE_S 50 // 噪音，50ms 采样窗口
+// Variables for different functions
+#define SAMPLE_SIZE_H 4  // 4 samples for heartrate
+#define SAMPLE_SIZE_S 50 // noise，50ms interval
 #define NOISE_THRESHOLD 500
 #define MIN_CHANGE 7.5
 #define ALPHA 0.75
-#define HEART_PERIOD_MS 50        // 采样周期 50ms
-#define MQTT_KEEP_ALIVE_SEC 60    // Keep Alive 时间
-#define PUBLISH_INTERVAL_MS 30000 // 发布间隔c
+#define HEART_PERIOD_MS 50        // interval 50ms
+#define MQTT_KEEP_ALIVE_SEC 60    // Keep Alive time
+#define PUBLISH_INTERVAL_MS 30000 
 
-// --- WiFi & HTTP 常量 ---
+// --- WiFi & HTTP setup ---
 const char *ssid = "CPLADRAGON";
 const char *password = "10293847";
-// const char* ssid = "05400";
-// const char* password = "180098123";
 const char *device_name = "Boyu";
 
-// --- MQTT 常量 ---
+// --- MQTT setup ---
 const char *mqtt_server = "178.128.94.113";
-const char *mqtt_topic = "esp32/sensor_data";
-const char *mqtt_command_topic = "esp32/prediction"; // Topic to SEND on
+const char *mqtt_topic = "esp32/sensor_data"; // Topic to SEND on
+const char *mqtt_command_topic = "esp32/prediction"; // Topic to listen on
 
-// MPU6050 寄存器地址和配置
+// MPU6050 Register address and configuration
 #define MPU6050_ADDRESS 0x68
 #define MPU6050_INT_PIN_CFG 0x37
 #define MPU6050_INT_ENABLE 0x38
-#define MPU6050_INT_STATUS 0x3A    // 中断状态寄存器地址
-#define MPU_INT_CONFIG 0x20        // 0x37 寄存器值：高电平有效，推挽输出，锁存直到读取
-#define MPU_INT_ENABLE_MOT_EN 0x40 // 0x38 寄存器值：只启用运动检测中断
-#define MPU6050_MOT_THR 0x1F       // 运动检测阈值寄存器
-#define MPU6050_MOT_DUR 0x20       // 运动检测持续时间寄存器
+#define MPU6050_INT_STATUS 0x3A    // Interrupt status register address
+#define MPU_INT_CONFIG 0x20        // 0x37 Register value: Active high, push-pull output, latched until read.
+#define MPU_INT_ENABLE_MOT_EN 0x40 // Register value 0x38: Enables motion detection interrupt only.
+#define MPU6050_MOT_THR 0x1F       // Motion detection threshold register
+#define MPU6050_MOT_DUR 0x20       // Motion detection duration register
 
-// 对象化
+// Objectification
 DHT dht(DHTPIN, DHTTYPE);
 Adafruit_MPU6050 mpu;
-// ESP32MQTTClient mqttClient;
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 WiFiClient espClient;
 PubSubClient client(espClient);
 SemaphoreHandle_t fallDetectedSemaphore;
 SemaphoreHandle_t motionDetectedSemaphore;
-SemaphoreHandle_t i2cMutex; // I2C 互斥锁
+SemaphoreHandle_t i2cMutex; // I2C Mutex
 SemaphoreHandle_t adcMutex;
-SemaphoreHandle_t sensorDataMutex; // OLED 互斥锁
+SemaphoreHandle_t sensorDataMutex; // OLED Mutex
 
-// 共享传感器数据
+// Share sensor data
 float g_bpm = 0.0;
 float g_temp = 0.0;
 float g_hum = 0.0;
 int g_noise_peak = 0;
-double g_noise_sum = 0.0;     // 噪声总和
-int g_noise_sample_count = 0; // 噪声采样次数
+double g_noise_sum = 0.0;     // sum of noise
+int g_noise_sample_count = 0; // Noise sampling times
 volatile bool g_mqttConnected = false;
 float g_ldr = 0.0;
 int g_in_motion = 1;
@@ -107,7 +102,7 @@ unsigned long stressedLastUpdate = 0;
 int stressedBlinkSpeed = 250; // 250ms on, 250ms off
 bool stressedState = false;   // false = off, true = on
 
-// 函数声明
+//  function declaration
 void Task_HeartRate(void *pvParameters);
 void Task_DHT(void *pvParameters);
 void Task_Sound(void *pvParameters);
@@ -119,11 +114,11 @@ void Task_LDR(void *pvParameters);
 void Task_UploadData(void *pvParameters);
 void Task_MQTT_Loop(void *pvParameters);
 void reconnectMQTT();
-void mqttCallback(char *topic, byte *payload, unsigned int length); // <-- ADDED: MQTT Callback
-void Task_LED_Control(void *pvParameters);                          // <-- ADDED: LED Task
+void mqttCallback(char *topic, byte *payload, unsigned int length); 
+void Task_LED_Control(void *pvParameters);                          
 void Task_OLED(void *pvParameters);
 
-// --- ADDED: LED Helper Functions ---
+//LED Helper Functions
 void showRGB(int r, int g, int b);
 void showStressed();
 void showNormal();
@@ -134,19 +129,19 @@ void setup()
   Serial.begin(115200);
   pinMode(HEART_LED_PIN, OUTPUT);
 
-  // --- ADDED: Initialize LED pins ---
+  //Initialize LED pins
   pinMode(LED_RED, OUTPUT);
   pinMode(LED_GREEN, OUTPUT);
   pinMode(LED_BLUE, OUTPUT);
 
-  // 创建 FreeRTOS 对象
+  //Creating FreeRTOS objects
   motionDetectedSemaphore = xSemaphoreCreateBinary();
   fallDetectedSemaphore = xSemaphoreCreateBinary();
-  i2cMutex = xSemaphoreCreateMutex(); // 互斥锁必须创建
+  i2cMutex = xSemaphoreCreateMutex();
   adcMutex = xSemaphoreCreateMutex();
-  sensorDataMutex = xSemaphoreCreateMutex(); // 共享数据互斥锁
+  sensorDataMutex = xSemaphoreCreateMutex(); 
 
-  // 如果任何一个信号量创建失败，打印错误并停止
+  // If any semaphore creation fails, print an error and stop.
   if (motionDetectedSemaphore == NULL || fallDetectedSemaphore == NULL || i2cMutex == NULL || sensorDataMutex == NULL || adcMutex == NULL)
   {
     Serial.println("FATAL: FreeRTOS object creation failed!");
@@ -157,10 +152,7 @@ void setup()
   dht.begin();
   Wire.begin();
 
-  // ----------------------------------------------------
-  // --- MPU/OLED 初始化: I2C MUX ---
-  // ----------------------------------------------------
-
+  //MPU/OLED Initialization: I2C MUX
   if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(500)) == pdTRUE)
   {
 
@@ -185,7 +177,7 @@ void setup()
       display.clearDisplay();
       display.display();
     }
-    // --- OLED Init ---
+    //OLED Init
     if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // 0x3C is the common address
         Serial.println(F("FATAL: SSD1306 allocation failed"));
     } else {
@@ -204,17 +196,17 @@ void setup()
     Serial.println("Setup: Failed to get I2C Mutex for init!");
   }
 
-  // MPU6050 中断配置（使用加锁的 mpu_write_register）
+  // MPU6050 Interrupt Configuration (using locked mpu_write_register)
   mpu_write_register(MPU6050_INT_PIN_CFG, MPU_INT_CONFIG);
   mpu_write_register(MPU6050_INT_ENABLE, MPU_INT_ENABLE_MOT_EN); // 0x40 = MOT_EN
   mpu_write_register(MPU6050_MOT_THR, 20);
   mpu_write_register(MPU6050_MOT_DUR, 1);
 
-  // ESP32 外部中断配置
+  //ESP32 External Interrupt Configuration
   pinMode(MPU_INT_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(MPU_INT_PIN), MPU_ISR, RISING); // INT 引脚拉高时触发
+  attachInterrupt(digitalPinToInterrupt(MPU_INT_PIN), MPU_ISR, RISING); // Triggered when the INT pin is pulled high
 
-  // --- 连接 Wi-Fi ---
+  //Connect to Wi-Fi
   Serial.print("Connecting to WiFi...");
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED)
@@ -226,12 +218,11 @@ void setup()
   Serial.print("IP Address: ");
   Serial.println(WiFi.localIP());
 
-  // --- MQTT Setup ---
+  //MQTT Setup
   client.setServer(mqtt_server, 1883);
-  client.setCallback(mqttCallback); // <-- ADDED: Set the callback function
+  client.setCallback(mqttCallback); //Set the callback function
 
-  // 创建任务
-  // Core 1 (实时传感器)
+  // Core 1
   xTaskCreatePinnedToCore(Task_LDR, "LDR", 2048, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(Task_HeartRate, "HeartRate", 4096, NULL, 3, NULL, 1);
   xTaskCreatePinnedToCore(Task_DHT, "DHT", 4096, NULL, 1, NULL, 1);
@@ -243,7 +234,7 @@ void setup()
   // Core 0 (Connectivity & Status)
   xTaskCreatePinnedToCore(Task_UploadData, "Upload", 4096, NULL, 2, NULL, 0);
   xTaskCreatePinnedToCore(Task_MQTT_Loop, "MQTTLoop", 4096, NULL, 2, NULL, 0);
-  xTaskCreatePinnedToCore(Task_LED_Control, "LEDs", 2048, NULL, 1, NULL, 0); // <-- ADDED: Start LED task
+  xTaskCreatePinnedToCore(Task_LED_Control, "LEDs", 2048, NULL, 1, NULL, 0); 
 }
 
 void loop()
@@ -251,7 +242,7 @@ void loop()
   vTaskDelay(pdMS_TO_TICKS(1000));
 }
 
-// --- NEW Task_OLED (Displays Text and Score) ---
+//Task_OLED (Displays Text and Score)
 void Task_OLED(void *pvParameters)
 {
   // Static variables to track the last-drawn state
@@ -289,8 +280,6 @@ void Task_OLED(void *pvParameters)
           emotionText = "NORMAL";
           break;
         }
-
-        // --- Draw the text (centered) ---
         
         // 2. Draw Emotion Text (Size 1)
         display.setTextSize(1);
@@ -331,7 +320,7 @@ void Task_OLED(void *pvParameters)
   }
 }
 
-// --- MQTT Callback Function (FIXED) ---
+//MQTT Callback Function
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
   // Convert payload to a String
   String message = "";
@@ -344,7 +333,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   // Check if the message is on the command topic
   if (String(topic) == mqtt_command_topic) {
     
-    // --- ADDED: Parse the "Emotion:Score" format ---
+    //Parse the "Emotion:Score"
     int separatorIndex = message.indexOf(':');
     
     // Check if the separator was found
@@ -358,7 +347,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       // Store the score and state globally
       g_happiness_score = happinessScore;
 
-      // --- Use the 'emotion' string for state logic ---
+      //Use the 'emotion' string for state logic
       if (emotion == "Sad") { 
         g_currentState = STATE_STRESSED; // Map "Sad" to "Stressed" LED
         Serial.println("State set to STRESSED (from 'Sad')");
@@ -385,7 +374,7 @@ void reconnectMQTT()
     if (client.connect("esp32Client"))
     {
       Serial.println("connected");
-      // --- ADDED: Subscribe to the command topic ---
+      // Subscribe to the command topic 
       if (client.subscribe(mqtt_command_topic))
       {
         Serial.printf("Subscribed to command topic: %s\n", mqtt_command_topic);
@@ -455,7 +444,6 @@ void Task_UploadData(void *pvParameters)
       doc["bpm"] = g_bpm;
       doc["temperature"] = g_temp;
       doc["humidity"] = g_hum;
-      // doc["noise"] = g_noise_peak;
       doc["ldr"] = g_ldr;
       doc["in_motion"] = g_in_motion;
 
@@ -490,11 +478,10 @@ void Task_UploadData(void *pvParameters)
   }
 }
 
-// 写入MPU
+// Write in MPU
 void mpu_write_register(uint8_t reg_addr, uint8_t data)
 {
-  // 保护 I2C
-  // 注意：如果 Mutex 未在 setup() 中创建，这里会崩溃
+  //Note: This will crash if the Mutex is not created in setup()
   if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(100)) == pdTRUE)
   {
     Wire.beginTransmission(MPU6050_ADDRESS);
@@ -512,8 +499,7 @@ void mpu_write_register(uint8_t reg_addr, uint8_t data)
   }
 }
 
-// --- ADDED: LED Helper Functions (from your snippet) ---
-
+//LED Helper Functions
 // Helper function to set all 3 colors
 void showRGB(int r, int g, int b)
 {
@@ -561,18 +547,13 @@ void showHappy()
   showRGB(0, greenValue, 0); // Breathing green
 }
 
-// --- New FreeRTOS Task for LED Control (FIXED) ---
+//FreeRTOS Task for LED Control
 void Task_LED_Control(void *pvParameters)
 {
   Serial.println("Task_LED_Control started.");
   while (1)
   {
-
-    // --- THIS IS THE FIX ---
-    // Change "String" to "LedState"
-    // We make a local copy because the variable is volatile
     LedState currentStateCopy = g_currentState;
-    // --- END OF FIX ---
 
     // Check the local copy and call the matching function
     if (currentStateCopy == STATE_STRESSED)
@@ -594,15 +575,15 @@ void Task_LED_Control(void *pvParameters)
   }
 }
 
-// ---------------------- 任务定义 ----------------------
+//---------------------- Task Definition ----------------------
 
-// 心率计数
+// heart rate count
 void Task_HeartRate(void *pvParameters)
 {
-  const TickType_t xFrequency = pdMS_TO_TICKS(HEART_PERIOD_MS); // 50ms 周期
+  const TickType_t xFrequency = pdMS_TO_TICKS(HEART_PERIOD_MS); // 50ms period
   TickType_t xLastWakeTime = xTaskGetTickCount();
 
-  // 静态变量：保持状态，只在任务启动时初始化
+  //Static variables: retain state and are initialized only when the task starts
   static float oldValue = 500.0;
   static float thresholdMax = 0.0;
   static unsigned long bpmMills = 0;
@@ -610,7 +591,7 @@ void Task_HeartRate(void *pvParameters)
   static unsigned long FirstBpmTime = 0;
   static unsigned long timeBetweenBeats = 0;
 
-  // 确保时间变量在第一次运行时被初始化
+  //Ensure that the time variable is initialized on the first run.
   if (bpmMills == 0)
   {
     bpmMills = millis();
@@ -624,40 +605,40 @@ void Task_HeartRate(void *pvParameters)
   {
     int rawValue = analogRead(HEART_PIN);
 
-    // 1. 低通滤波 (平滑信号)
+    //1. Low-pass filtering (smoothing signals)
     float value = ALPHA * oldValue + (1 - ALPHA) * rawValue;
     float change = value - oldValue;
     oldValue = value;
 
-    // 2. 无手指检测 (2秒无变化则重置BPM)
+    //2. No-finger detection (BPM resets if there is no change after 2 seconds)
     if (change < MIN_CHANGE && (millis() - timeBetweenBeats) >= 2000)
     {
       bpm_count = 0;
       if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(10)) == pdTRUE)
       {
-        g_bpm = 0.0; // 报告 BPM 为 0
+        g_bpm = 0.0; //The report shows a BPM of 0.
         xSemaphoreGive(sensorDataMutex);
       }
     }
 
-    // 3. 脉冲峰值检测 (动态阈值)
+    //3. Pulse peak detection (dynamic threshold)
     if ((change >= thresholdMax) &&
         (change > MIN_CHANGE) &&
-        (change < 30) && // 限制最大变化值以过滤尖锐噪声
+        (change < 30) && // Limit the maximum variation value to filter out sharp noise.
         (millis() > timeBetweenBeats + minDelayBetweenBeats))
     {
 
-      // 首次心跳记录时间
+      // First heartbeat recording time
       if (bpm_count == 0)
       {
         FirstBpmTime = millis();
       }
 
-      // 重置动态阈值
+      //Reset dynamic threshold
       thresholdMax = change;
       digitalWrite(HEART_LED_PIN, HIGH);
 
-      // 更新心跳时间
+      //Update heartbeat time
       timeBetweenBeats = millis();
       bpm_count++;
       Serial.print("Heart beat detected!\n");
@@ -667,10 +648,10 @@ void Task_HeartRate(void *pvParameters)
       digitalWrite(HEART_LED_PIN, LOW);
     }
 
-    // 4. 阈值衰减
+    //4. Threshold decay
     thresholdMax = thresholdMax * 0.97;
 
-    // 5. BPM 周期性报告 (15秒窗口)
+    //5. Periodic BPM Report (15-second window)
     if (millis() >= bpmMills + 15000)
     {
       float calculated_bpm = 0.0;
@@ -693,10 +674,10 @@ void Task_HeartRate(void *pvParameters)
   }
 }
 
-// 湿度温度
+// Temperature and Humidity
 void Task_DHT(void *pvParameters)
 {
-  const TickType_t xFrequency = pdMS_TO_TICKS(29000); // 每29s
+  const TickType_t xFrequency = pdMS_TO_TICKS(29000); // every 29s
   TickType_t xLastWakeTime = xTaskGetTickCount();
   while (1)
   {
@@ -745,7 +726,7 @@ void Task_LDR(void *pvParameters)
   }
 }
 
-// 噪声监测
+// noise detection
 void Task_Sound(void *pvParameters)
 {
   const TickType_t xFrequency = pdMS_TO_TICKS(200);
@@ -768,17 +749,17 @@ void Task_Sound(void *pvParameters)
           signalMin = sample;
       }
     }
-    int amplitude = signalMax - signalMin; // 当前振幅 (每 200ms)
+    int amplitude = signalMax - signalMin; //Current amplitude (every 200ms)
 
-    // 2. 更新全局聚合变量 (使用 Mutex 保护)
+    //Update global aggregate variables (protected by Mutex)
     if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(10)) == pdTRUE)
     {
-      // 更新峰值
+      //update peak
       if (amplitude > g_noise_peak)
       {
         g_noise_peak = amplitude;
       }
-      // 累加平均值
+      //Cumulative average
       g_noise_sum += (double)amplitude;
       g_noise_sample_count++;
       xSemaphoreGive(sensorDataMutex);
@@ -787,9 +768,6 @@ void Task_Sound(void *pvParameters)
     {
       Serial.println("Task_Sound: Failed to get sensor mutex!");
     }
-
-    // debug
-    // Serial.printf("Noise amplitude: %d\n", amplitude);
 
     if (amplitude > NOISE_THRESHOLD)
     {
@@ -800,27 +778,25 @@ void Task_Sound(void *pvParameters)
   }
 }
 
-// 动作监测
+//motion detection
 void Task_Motion(void *pvParameters)
 {
   sensors_event_t a, g, temp;
   for (;;)
   {
-    // 阻塞等待 MPU 中断信号
+    //Blocked waiting for MPU interrupt signal
     if (xSemaphoreTake(motionDetectedSemaphore, portMAX_DELAY) == pdTRUE)
     {
 
-      // MPU6050 中断被触发，立即读取数据和中断状态 (I2C 操作必须加锁)
+      //When an MPU6050 interrupt is triggered, the data and interrupt status are immediately read (I2C operations must be locked)
       if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(50)) == pdTRUE)
-      { // 获取 I2C 锁
+      { //Acquire I2C lock
         mpu.getEvent(&a, &g, &temp);
 
-        // 关键修复: 读取中断状态寄存器 (0x3A) 以清除 MPU6050 的 INT 锁存。
-        // 这一操作必须在 Mutex 保护下进行。
         uint8_t status;
         Wire.beginTransmission(MPU6050_ADDRESS);
         Wire.write(MPU6050_INT_STATUS);
-        Wire.endTransmission(false); // 发送重启条件
+        Wire.endTransmission(false); // Send restart conditions
         Wire.requestFrom(MPU6050_ADDRESS, 1);
         if (Wire.available())
         {
@@ -832,27 +808,27 @@ void Task_Motion(void *pvParameters)
           Serial.println("Warning: Failed to read MPU INT Status!");
         }
 
-        xSemaphoreGive(i2cMutex); // 释放锁
+        xSemaphoreGive(i2cMutex);
       }
       else
       {
         Serial.println("MotionTask: Failed to get I2C Mutex!");
-        // 如果获取锁失败，继续等待下一次信号量
+        //If acquiring the lock fails, continue waiting for the next semaphore
         continue;
       }
 
-      // 注意：getEvent() 之后才能进行计算
+      //Note: Calculations can only be performed after getEvent()
       float accTotal = sqrt(a.acceleration.x * a.acceleration.x +
                             a.acceleration.y * a.acceleration.y +
                             a.acceleration.z * a.acceleration.z);
 
       if (accTotal > 10.0)
-      { // 检测到高 G 撞击
+      { // High G impact detected
         Serial.println("IMPACT DETECTED after MPU Interrupt!");
         xSemaphoreGive(fallDetectedSemaphore);
         if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(200)) == pdTRUE)
         {
-          g_in_motion = 1; // 设置标志
+          g_in_motion = 1;
           xSemaphoreGive(sensorDataMutex);
         }
         else
@@ -868,12 +844,11 @@ void Task_Motion(void *pvParameters)
   }
 }
 
-// 摔倒警报
+// fall alert
 void Task_Alarm(void *pvParameters)
 {
   for (;;)
   {
-    // 等待中断信号
     if (xSemaphoreTake(fallDetectedSemaphore, portMAX_DELAY) == pdTRUE)
     {
       Serial.println("ALARM TRIGGERED!");
@@ -884,15 +859,15 @@ void Task_Alarm(void *pvParameters)
   }
 }
 
-// 中断服务程序 (ISR)
+//Interrupt Service Routine (ISR)
 void IRAM_ATTR MPU_ISR()
 {
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-  // 仅给出信号量，不在 ISR 中执行 I2C 操作
+  //Only provide semaphores; do not perform I2C operations within the ISR.
   xSemaphoreGiveFromISR(motionDetectedSemaphore, &xHigherPriorityTaskWoken);
 
   if (xHigherPriorityTaskWoken == pdTRUE)
   {
-    portYIELD_FROM_ISR(xHigherPriorityTaskWoken); // 立即进行上下文切换
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
   }
 }
