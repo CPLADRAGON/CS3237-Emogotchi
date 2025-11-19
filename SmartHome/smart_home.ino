@@ -113,9 +113,8 @@ void setup() {
 }
 
 void loop() {
-  // 1. --- 保持 WiFi 和 MQTT 连接 ---
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi 已断开. 正在重新连接...");
+    Serial.println("WiFi disconnected, Reconnecting...");
     setup_wifi(); 
   }
 
@@ -124,49 +123,45 @@ void loop() {
   }
   client.loop(); 
 
-  // 2. --- 处理新的情绪分数 ---
   if (g_newScoreAvailable) {
     g_newScoreAvailable = false;
     
     Serial.printf("Main Loop: 收到新分数: %.2f\n", g_happinessScore);
     
-    // 更新 OLED 显示
     updateOLED(g_happinessScore);
 
-    // 根据分数更新 STRESS_PIN
+    // update STRESS_PIN accroding to g_happinessScore
     if (g_happinessScore <= 33.0) {
       // 
-      // 检查我们是否 *刚* 进入悲伤状态 (g_sadStateTriggered 标志为 false)
+      // check if sad unrecovered (g_sadStateTriggered = false)
       if (!g_sadStateTriggered) {
         Serial.println("State Change: SAD. Sending trigger ONCE.");
-        digitalWrite(STRESS_PIN_0, HIGH); //
-        g_sadStateTriggered = true;       // 
+        digitalWrite(STRESS_PIN_0, HIGH); 
+        g_sadStateTriggered = true;
       }
-      digitalWrite(STRESS_PIN_1, LOW);  // Pin 1 
+      digitalWrite(STRESS_PIN_1, LOW);  // ASR Pin 1 
     } 
     else if (g_happinessScore <= 67.0) {
       Serial.println("State Change: NORMAL. Resetting trigger.");
-      digitalWrite(STRESS_PIN_0, LOW); //
+      digitalWrite(STRESS_PIN_0, LOW);
       digitalWrite(STRESS_PIN_1, HIGH);
-      g_sadStateTriggered = false;      // 
+      g_sadStateTriggered = false;
     } 
     else {
-      // 
       Serial.println("State Change: HAPPY. Resetting trigger.");
-      digitalWrite(STRESS_PIN_0, LOW);  //
-      digitalWrite(STRESS_PIN_1, LOW);  //
-      g_sadStateTriggered = false;      // 
+      digitalWrite(STRESS_PIN_0, LOW); 
+      digitalWrite(STRESS_PIN_1, LOW);
+      g_sadStateTriggered = false; 
     }
   }
 
-  // 3. --- 处理引脚输入 (按钮) ---
   if (digitalRead(RELAX_PIN) == LOW && g_happinessScore < 34) {
     g_relaxModeActive = true;
   } 
   if (g_happinessScore >= 34) {
     g_relaxModeActive = false; 
   }
-  // 检查 RGB_PIN
+  // RGB_PIN check
   if (g_relaxModeActive) {
     Relax_mode();
   }
@@ -193,7 +188,7 @@ void loop() {
 }
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  // 1. 将 payload 转换为 String
+  // payload to String
   String message = "";
   for (int i = 0; i < length; i++) {
     message += (char)payload[i];
@@ -201,20 +196,19 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
   Serial.printf("\nMQTT Callback: Topic [%s]: %s\n", topic, message.c_str());
 
-  // 2. 检查是否是我们关心的主题
+  // subscribe
   if (String(topic) == mqtt_command_topic) {
     
-    // 3. 解析 "Emotion:Score" 格式
+    // resolve Emotion:Score
     int separatorIndex = message.indexOf(':');
     
     if (separatorIndex != -1) {
       String emotion = message.substring(0, separatorIndex);
       String scoreStr = message.substring(separatorIndex + 1);
       
-      // 4. --- 核心逻辑 ---
-      // 更新全局变量并设置标志位
+      // update global flag
       g_happinessScore = scoreStr.toFloat();
-      g_newScoreAvailable = true; // <-- 通知主循环
+      g_newScoreAvailable = true;
 
       Serial.printf("Callback: Parsed Emotion: %s, Score: %.2f\n", emotion.c_str(), g_happinessScore);
 
@@ -279,6 +273,8 @@ void updateOLED(float score) {
 
     const unsigned char* iconToDraw;
 
+////////////////////////////////////////////smilling face
+/**/
     if (score <= 33.0) {
         iconToDraw = icon_sad_32x32;
     } 
@@ -288,6 +284,7 @@ void updateOLED(float score) {
     else {
         iconToDraw = icon_happy_32x32;
     }
+/////////////////////////////////////////////注释到这里
 
     display.drawBitmap(16, 8, iconToDraw, 32, 32, SSD1306_WHITE);
 
