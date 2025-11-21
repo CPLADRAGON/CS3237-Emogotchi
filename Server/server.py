@@ -244,6 +244,11 @@ def index():
 # --- [ ADDED: Test Endpoint for Telegram ] ---
 
 
+@app.route('/info')
+def info():
+    return render_template('info.html')
+
+
 @app.route('/test_alert')
 def test_alert():
     """Manually triggers a test notification."""

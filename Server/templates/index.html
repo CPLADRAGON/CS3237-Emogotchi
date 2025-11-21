@@ -32,6 +32,25 @@
             box-sizing: border-box;
         }
 
+        .info-button {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 10px 18px;
+            background-color: #0c82ffbd;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            font-family: sans-serif;
+            font-size: 16px;
+            border: none;
+            cursor: pointer;
+        }
+
+        .info-button:hover {
+            background-color: #0057b3bd;
+        }
+
         body {
             font-family: 'Poppins', sans-serif;
             background-color: var(--bg-color);
@@ -337,6 +356,7 @@
         </div>
         <h1>Emogotchi Dashboard</h1>
         <span id="latest-timestamp" style="color: var(--text-dim); font-size: 0.9em;">Loading...</span>
+        <a href="/info" class="info-button">Info</a>
         <h2 style="margin-top: 10px;">Latest Readings</h2>
         <div class="latest-grid">
             <div class="chart-card">

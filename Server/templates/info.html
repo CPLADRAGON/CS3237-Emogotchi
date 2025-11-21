@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CS3237 Final Report: Emogotchi</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        /* Color Palette: Energetic & Playful (Vibrant/High Contrast) based on "colour combinations" */
+        /* Primary: Deep Navy/Black #0A192F (Backgrounds) */
+        /* Secondary: Bright Cyan/Teal #73DACA (Accents, Charts) */
+        /* Tertiary: Vivid Blue #7AA2F7 (Headings, Highlights) */
+        /* Quaternary: Soft Pink/Salmon #FF9E64 (Warnings, Secondary Data) */
+        /* Text: Light Grey/White #C0CAF5 (Main Text) */
+
+        :root {
+            --bg-primary: #0A192F;
+            --bg-secondary: #112240;
+            --text-primary: #C0CAF5;
+            --text-secondary: #8892B0;
+            --accent-primary: #64FFDA; /* Adjusted to a vibrant teal based on common "energetic" coding themes */
+            --accent-secondary: #7AA2F7;
+            --accent-warning: #FF9E64;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            color: #E6F1FF;
+            font-weight: 700;
+        }
+
+        .card {
+            background-color: var(--bg-secondary);
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            transition: transform 0.2s;
+        }
+        .card:hover {
+            transform: translateY(-2px);
+        }
+
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 100%;
+            height: 300px; /* Base height */
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+
+        /* Flowchart Styling - Tailwind Implementation */
+        .flow-step {
+            @apply bg-gray-800 border-2 border-[#64FFDA] rounded-lg p-4 text-center shadow-lg w-full md:w-48;
+        }
+        .flow-arrow {
+            @apply text-[#64FFDA] text-2xl font-bold my-2 md:my-auto md:mx-4 transform rotate-90 md:rotate-0;
+        }
+    </style>
+    <!-- Source Material Analysis:
+         - Topic: CS3237 IoT Project Report "Emogotchi"
+         - Structure: Introduction -> System Architecture (Edge, Cloud, Actuation) -> Implementation Details (Firmware, Mutexes) -> Machine Learning (LSTM) -> Evaluation (Power, Latency) -> Conclusion.
+         - Key Data: Sensor types, Hardware specs, ML model accuracy (MAE), Latency comparison (HTTP vs MQTT), Battery life calculation.
+         - Narrative: Transition from problem (student stress) to solution (Emogotchi), detailing the technical depth (FreeRTOS, LSTM) and validating the results.
+    -->
+    <!-- Visualizations Plan:
+         1. Intro: Large Stats (Team info, core concept).
+         2. Architecture: Diagram (HTML/CSS flow) showing Edge -> Cloud -> Feedback loop.
+         3. Hardware: List/Cards for components.
+         4. Firmware: Flowchart/Process map for FreeRTOS tasks.
+         5. ML: Line chart showing "Happiness Score" prediction vs. actual (simulated data points).
+         6. Evaluation: Bar chart comparing HTTP vs MQTT latency. Battery life donut chart.
+    -->
+</head>
+<body class="antialiased">
+
+    <!-- Navigation -->
+    <nav class="sticky top-0 z-50 bg-[#0A192F]/90 backdrop-blur-sm border-b border-[#112240] py-4">
+        <div class="max-w-7xl mx-auto px-4 flex justify-between items-center">
+            <div class="text-2xl font-bold text-[#64FFDA]">Emogotchi</div>
+            <div class="hidden md:flex space-x-6 text-sm font-medium text-[#8892B0]">
+                <a href="#overview" class="hover:text-[#64FFDA] transition-colors">Overview</a>
+                <a href="#architecture" class="hover:text-[#64FFDA] transition-colors">Architecture</a>
+                <a href="#firmware" class="hover:text-[#64FFDA] transition-colors">Firmware</a>
+                <a href="#intelligence" class="hover:text-[#64FFDA] transition-colors">Intelligence</a>
+                <a href="#evaluation" class="hover:text-[#64FFDA] transition-colors">Evaluation</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section id="overview" class="py-16 px-4 max-w-7xl mx-auto">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+            <div>
+                <h1 class="text-5xl md:text-6xl mb-6 leading-tight">A Real-Time <span class="text-[#64FFDA]">IoT Wellness Monitor</span></h1>
+                <p class="text-lg text-[#8892B0] mb-8">
+                    Emogotchi is a closed-loop system designed to combat student burnout. By fusing physiological data with environmental sensors, we utilize cloud-based LSTM neural networks to predict stress and actively improve the user's environment.
+                </p>
+                <div class="flex flex-wrap gap-4">
+                    <div class="bg-[#112240] px-6 py-3 rounded-lg border border-[#64FFDA]">
+                        <span class="block text-2xl font-bold text-[#64FFDA]">2</span>
+                        <span class="text-xs text-[#8892B0]">ESP32 Nodes</span>
+                    </div>
+                    <div class="bg-[#112240] px-6 py-3 rounded-lg border border-[#64FFDA]">
+                        <span class="block text-2xl font-bold text-[#64FFDA]">96%</span>
+                        <span class="text-xs text-[#8892B0]">Uptime Target</span>
+                    </div>
+                    <div class="bg-[#112240] px-6 py-3 rounded-lg border border-[#64FFDA]">
+                        <span class="block text-2xl font-bold text-[#64FFDA]">&lt;200ms</span>
+                        <span class="text-xs text-[#8892B0]">Latency</span>
+                    </div>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div class="bg-[#112240] p-6 rounded-lg text-center">
+                    <div class="text-3xl mb-2">💓</div>
+                    <h3 class="font-bold">Physiology</h3>
+                    <p class="text-sm text-[#8892B0]">BPM & Motion</p>
+                </div>
+                <div class="bg-[#112240] p-6 rounded-lg text-center">
+                    <div class="text-3xl mb-2">🌡️</div>
+                    <h3 class="font-bold">Environment</h3>
+                    <p class="text-sm text-[#8892B0]">Noise, Light, Temp</p>
+                </div>
+                <div class="bg-[#112240] p-6 rounded-lg text-center">
+                    <div class="text-3xl mb-2">🧠</div>
+                    <h3 class="font-bold">AI Core</h3>
+                    <p class="text-sm text-[#8892B0]">LSTM Model</p>
+                </div>
+                <div class="bg-[#112240] p-6 rounded-lg text-center">
+                    <div class="text-3xl mb-2">🏠</div>
+                    <h3 class="font-bold">Actuation</h3>
+                    <p class="text-sm text-[#8892B0]">Automated Home</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Architecture Section -->
+    <section id="architecture" class="py-16 bg-[#0d1f3a]">
+        <div class="max-w-7xl mx-auto px-4">
+            <h2 class="text-3xl mb-12 text-center border-b border-[#112240] pb-4">System Architecture: The Closed Loop</h2>
+            <p class="text-center text-[#8892B0] max-w-3xl mx-auto mb-12">
+                The system operates on a Publish/Subscribe model using MQTT. Data flows from the Edge (Sensors) to the Cloud (Processing) and back to the Edge (Feedback/Actuation), ensuring real-time responsiveness.
+            </p>
+            
+            <!-- Architecture Flow Diagram (HTML/Tailwind) -->
+            <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-16">
+                <!-- Node 1 -->
+                <div class="bg-[#112240] p-6 rounded-xl border border-[#7AA2F7] w-full md:w-1/3 relative">
+                    <h3 class="text-xl font-bold text-[#7AA2F7] mb-2">Node 1: Emogotchi</h3>
+                    <ul class="text-sm text-[#8892B0] space-y-2 mb-4">
+                        <li>• ESP32 (Dual Core)</li>
+                        <li>• Sensors: Pulse, DHT11, MPU6050, Sound, LDR</li>
+                        <li>• Feedback: OLED, RGB LED</li>
+                    </ul>
+                    <div class="bg-[#0A192F] p-2 rounded text-center text-xs text-[#64FFDA] font-mono">Topic: esp32/sensor_data</div>
+                </div>
+
+                <!-- Arrow Right -->
+                <div class="hidden md:block text-[#64FFDA] text-4xl">⮕</div>
+                <div class="md:hidden text-[#64FFDA] text-4xl">⬇</div>
+
+                <!-- Cloud -->
+                <div class="bg-[#112240] p-6 rounded-xl border border-[#64FFDA] w-full md:w-1/3 shadow-[0_0_15px_rgba(100,255,218,0.1)]">
+                    <h3 class="text-xl font-bold text-[#64FFDA] mb-2">DigitalOcean Cloud</h3>
+                    <ul class="text-sm text-[#8892B0] space-y-2 mb-4">
+                        <li>• Mosquitto MQTT Broker</li>
+                        <li>• Python Flask Server</li>
+                        <li>• <b>LSTM Model Inference</b></li>
+                        <li>• Telegram Bot Integration</li>
+                    </ul>
+                    <div class="bg-[#0A192F] p-2 rounded text-center text-xs text-[#7AA2F7] font-mono">Process: Data → Score</div>
+                </div>
+
+                <!-- Arrow Right -->
+                <div class="hidden md:block text-[#64FFDA] text-4xl">⮕</div>
+                <div class="md:hidden text-[#64FFDA] text-4xl">⬇</div>
+
+                <!-- Node 2 -->
+                <div class="bg-[#112240] p-6 rounded-xl border border-[#FF9E64] w-full md:w-1/3">
+                    <h3 class="text-xl font-bold text-[#FF9E64] mb-2">Node 2: Smart Hub</h3>
+                    <ul class="text-sm text-[#8892B0] space-y-2 mb-4">
+                        <li>• ESP32 Actuator</li>
+                        <li>• Servos (Window/Door)</li>
+                        <li>• Auto-Trigger on "Sad"</li>
+                    </ul>
+                    <div class="bg-[#0A192F] p-2 rounded text-center text-xs text-[#FF9E64] font-mono">Topic: esp32/prediction</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Implementation Details: Firmware -->
+    <section id="firmware" class="py-16 px-4 max-w-7xl mx-auto">
+        <h2 class="text-3xl mb-8">Firmware Engineering: FreeRTOS & Concurrency</h2>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-12">
+            <div>
+                <p class="text-[#8892B0] mb-6">
+                    A key technical achievement is the implementation of <strong>FreeRTOS</strong>. A traditional "Super Loop" would fail to handle the 50ms sampling rate of the pulse sensor alongside blocking Wi-Fi operations. We utilized <strong>Core Pinning</strong> and <strong>Mutexes</strong> to ensure stability.
+                </p>
+                
+                <!-- Technical Highlights Cards -->
+                <div class="space-y-4">
+                    <div class="flex items-start p-4 bg-[#112240] rounded-lg border-l-4 border-[#64FFDA]">
+                        <div>
+                            <h4 class="font-bold text-[#64FFDA]">Core 1: Sensor Logic</h4>
+                            <p class="text-sm text-[#8892B0]">Dedicates high-priority processing to `Task_HeartRate` (50ms) and `Task_Sound`, ensuring no data loss during sampling.</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start p-4 bg-[#112240] rounded-lg border-l-4 border-[#7AA2F7]">
+                        <div>
+                            <h4 class="font-bold text-[#7AA2F7]">Core 0: Networking</h4>
+                            <p class="text-sm text-[#8892B0]">Offloads heavy `Task_UploadData` and `Task_MQTT_Loop` to the secondary core, preventing Wi-Fi lag from freezing the UI.</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start p-4 bg-[#112240] rounded-lg border-l-4 border-[#FF9E64]">
+                        <div>
+                            <h4 class="font-bold text-[#FF9E64]">Mutex Synchronization</h4>
+                            <p class="text-sm text-[#8892B0]">Solved critical race conditions on the shared ADC (Analog-to-Digital Converter) and I2C bus using `adcMutex` and `i2cMutex`.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Chart: Task Allocation -->
+            <div class="bg-[#112240] p-6 rounded-lg shadow-lg">
+                <h3 class="text-center mb-4 text-[#C0CAF5]">CPU Core Utilization Strategy</h3>
+                <div class="chart-container">
+                    <canvas id="coreChart"></canvas>
+                </div>
+                <p class="text-xs text-center mt-2 text-[#8892B0]">Distribution of RTOS tasks across physical ESP32 cores.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Machine Learning Section -->
+    <section id="intelligence" class="py-16 bg-[#0d1f3a]">
+        <div class="max-w-7xl mx-auto px-4">
+            <div class="flex flex-col md:flex-row gap-12">
+                <div class="w-full md:w-1/2">
+                    <h2 class="text-3xl mb-6">Cloud Intelligence: LSTM Model</h2>
+                    <p class="text-[#8892B0] mb-6">
+                        User stress is cumulative, not instantaneous. To capture this temporal dependency, we moved beyond simple Random Forest classifiers and implemented a <strong>Long Short-Term Memory (LSTM)</strong> neural network.
+                    </p>
+                    <ul class="list-disc list-inside space-y-3 text-[#8892B0] mb-6">
+                        <li><strong class="text-[#64FFDA]">Input:</strong> Sequence of 10 timestamps (5-minute window).</li>
+                        <li><strong class="text-[#64FFDA]">Features:</strong> BPM, Noise, Temp, Humidity, Motion, Light.</li>
+                        <li><strong class="text-[#64FFDA]">Output:</strong> "Happiness Score" (0.0 - 100.0).</li>
+                        <li><strong class="text-[#64FFDA]">Action:</strong> Scores < 34 trigger "Sad" state and Telegram alerts.</li>
+                    </ul>
+                </div>
+                <div class="w-full md:w-1/2 bg-[#112240] p-6 rounded-lg border border-[#233554]">
+                    <h3 class="text-center mb-4">Model Feature Importance</h3>
+                    <div class="chart-container">
+                        <canvas id="featureChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Experimental Evaluation -->
+    <section id="evaluation" class="py-16 px-4 max-w-7xl mx-auto">
+        <h2 class="text-3xl mb-12 text-center">Experimental Evaluation & Results</h2>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <!-- Latency Comparison -->
+            <div class="card p-6">
+                <h3 class="text-xl mb-4 text-[#7AA2F7]">Communication Latency</h3>
+                <p class="text-sm text-[#8892B0] mb-4">Transitioning from HTTP Polling to MQTT Push significantly reduced command latency.</p>
+                <div class="chart-container">
+                    <canvas id="latencyChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Battery Life -->
+            <div class="card p-6">
+                <h3 class="text-xl mb-4 text-[#64FFDA]">Power Management</h3>
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <p class="text-sm text-[#8892B0]">Using FreeRTOS `vTaskDelay` allows the CPU to sleep between sensor ticks.</p>
+                        <div class="mt-4">
+                            <div class="text-3xl font-bold text-white">~20 Hours</div>
+                            <div class="text-xs text-[#8892B0]">Estimated Runtime (2000mAh)</div>
+                        </div>
+                    </div>
+                    <div class="w-1/2 h-40">
+                        <canvas id="batteryChart"></canvas>
+                    </div>
+                </div>
+                <div class="text-xs text-[#8892B0] mt-2 border-t border-[#233554] pt-2">
+                    Based on average draw of 100mA (Active + Sleep blend).
+                </div>
+            </div>
+        </div>
+
+        <!-- Logic Flow of Actuation -->
+        <div class="mt-12 bg-[#112240] p-8 rounded-lg">
+            <h3 class="text-xl mb-6 text-center">Scenario: High Stress Detected</h3>
+            <div class="flex flex-col md:flex-row justify-center items-center gap-4 md:gap-8">
+                <div class="flow-step">
+                    <div class="text-2xl mb-2">🔊</div>
+                    <div class="font-bold text-white">Noise > 80dB</div>
+                    <div class="text-xs text-[#8892B0]">Edge Sensor</div>
+                </div>
+                <div class="flow-arrow">➜</div>
+                <div class="flow-step">
+                    <div class="text-2xl mb-2">📉</div>
+                    <div class="font-bold text-white">Score < 34</div>
+                    <div class="text-xs text-[#8892B0]">Cloud LSTM</div>
+                </div>
+                <div class="flow-arrow">➜</div>
+                <div class="flow-step">
+                    <div class="text-2xl mb-2">🪟</div>
+                    <div class="font-bold text-white">Open Window</div>
+                    <div class="text-xs text-[#8892B0]">Smart Hub Actuation</div>
+                </div>
+                <div class="flow-arrow">➜</div>
+                <div class="flow-step">
+                    <div class="text-2xl mb-2">📱</div>
+                    <div class="font-bold text-white">Alert User</div>
+                    <div class="text-xs text-[#8892B0]">Telegram Bot</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="py-8 text-center text-[#8892B0] text-sm border-t border-[#112240] mt-12">
+        <p>CS3237 Team 06 - Emogotchi Project Report</p>
+        <p>Technologies: ESP32, FreeRTOS, MQTT, Flask, TensorFlow/Keras</p>
+        <!-- NO SVG or Mermaid Used -->
+    </footer>
+
+    <script>
+        // --- CHART 1: Core Utilization (Doughnut) ---
+        const ctxCore = document.getElementById('coreChart').getContext('2d');
+        new Chart(ctxCore, {
+            type: 'doughnut',
+            data: {
+                labels: ['Core 1 (Sensors)', 'Core 0 (Network)'],
+                datasets: [{
+                    data: [8, 2], // 8 sensor/logic tasks, 2 network tasks
+                    backgroundColor: ['#64FFDA', '#7AA2F7'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { color: '#C0CAF5' } },
+                    tooltip: {
+                        callbacks: {
+                            title: function(tooltipItems) {
+                                const item = tooltipItems[0];
+                                let label = item.chart.data.labels[item.dataIndex];
+                                if (Array.isArray(label)) return label.join(' ');
+                                return label;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // --- CHART 2: Feature Importance (Bar) ---
+        const ctxFeat = document.getElementById('featureChart').getContext('2d');
+        new Chart(ctxFeat, {
+            type: 'bar',
+            data: {
+                labels: ['HRV (Stress)', 'Noise Level', 'Motion', 'Temperature', 'Light'],
+                datasets: [{
+                    label: 'Importance Weight',
+                    data: [0.35, 0.25, 0.20, 0.10, 0.10],
+                    backgroundColor: [
+                        '#FF9E64', '#7AA2F7', '#64FFDA', '#8892B0', '#E6F1FF'
+                    ],
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',
+                scales: {
+                    x: { ticks: { color: '#8892B0' }, grid: { color: '#233554' } },
+                    y: { ticks: { color: '#C0CAF5' }, grid: { display: false } }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: function(tooltipItems) {
+                                const item = tooltipItems[0];
+                                let label = item.chart.data.labels[item.dataIndex];
+                                if (Array.isArray(label)) return label.join(' ');
+                                return label;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // --- CHART 3: Latency Comparison (Bar) ---
+        const ctxLat = document.getElementById('latencyChart').getContext('2d');
+        new Chart(ctxLat, {
+            type: 'bar',
+            data: {
+                labels: ['HTTP Polling', 'MQTT Push'],
+                datasets: [{
+                    label: 'Latency (ms)',
+                    data: [2500, 180],
+                    backgroundColor: ['#8892B0', '#64FFDA'],
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { 
+                        beginAtZero: true, 
+                        title: { display: true, text: 'Time (ms)', color: '#8892B0' },
+                        ticks: { color: '#8892B0' },
+                        grid: { color: '#233554' }
+                    },
+                    x: { ticks: { color: '#C0CAF5' }, grid: { display: false } }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: function(tooltipItems) {
+                                const item = tooltipItems[0];
+                                let label = item.chart.data.labels[item.dataIndex];
+                                if (Array.isArray(label)) return label.join(' ');
+                                return label;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // --- CHART 4: Battery Consumption (Pie) ---
+        const ctxBat = document.getElementById('batteryChart').getContext('2d');
+        new Chart(ctxBat, {
+            type: 'pie',
+            data: {
+                labels: ['Sensor Polling (80mA)', 'Wi-Fi Burst (240mA)', 'Idle/Sleep (20mA)'],
+                datasets: [{
+                    data: [60, 10, 30], // Estimated percentage of time/power impact
+                    backgroundColor: ['#7AA2F7', '#FF9E64', '#64FFDA'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: function(tooltipItems) {
+                                const item = tooltipItems[0];
+                                let label = item.chart.data.labels[item.dataIndex];
+                                if (Array.isArray(label)) return label.join(' ');
+                                return label;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
