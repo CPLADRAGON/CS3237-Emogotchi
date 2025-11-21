@@ -48,7 +48,7 @@ TREND_CSV_FILE_PATH = os.path.join(SCRIPT_DIR, 'happiness_trend.csv')
 TREND_CSV_HEADERS = ['timestamp', 'happiness_score']
 csv_lock = threading.Lock()
 
-# --- [ ADDED: Telegram Notification Setup ] ---
+# --- [Telegram Notification Setup ] ---
 BOT_TOKEN = "7393315205:AAEos38jymwEA4lhCUZQBWfZY8U5ZxdwlqY"
 CHAT_ID = "-5025276308"  # Must be a string, e.g., "-100123456789"
 NOTIFICATION_COOLDOWN_SEC = 10
@@ -71,7 +71,7 @@ def on_connect(client, userdata, flags, rc):
     else:
         print(f"Failed to connect to MQTT Broker, return code {rc}")
 
-# --- [ ADDED: Telegram Helper Function ] ---
+# --- [Telegram Helper Function ] ---
 
 
 def send_telegram_notification(message):
@@ -121,12 +121,10 @@ def get_happiness_score(sensor_sequence):
             emotion_score = target_scaler.inverse_transform(
                 scaled_score.reshape(-1, 1))[0][0]
 
-            # --- [ THIS IS THE CRITICAL FIX ] ---
             # Check for NaN *before* clipping
             if np.isnan(emotion_score):
                 print("Warning: Model returned NaN. Defaulting to 50.")
                 emotion_score = 50.0
-            # --- [ END OF FIX ] ---
 
             emotion_score = np.clip(emotion_score, 0, 100)
 
@@ -153,7 +151,7 @@ def on_message(client, userdata, msg):
     try:
         data = json.loads(msg.payload.decode())
 
-        # --- [ MODIFIED: Use timezone-aware ISO format ] ---
+        # --- [ Use timezone-aware ISO format ] ---
         data['timestamp'] = datetime.now(timezone.utc).isoformat()
         latest_data = data  # Store for /data endpoint
 
@@ -172,7 +170,7 @@ def on_message(client, userdata, msg):
             sequence = list(sensor_data_history)
             score = get_happiness_score(sequence)
 
-            # --- [ ADDED: Telegram Alert Logic ] ---
+            # --- [ Telegram Alert Logic ] ---
             global g_last_notification_time
             if score < 33:
                 current_time = time.time()
@@ -241,7 +239,7 @@ except Exception as e:
 def index():
     return render_template('index.html')
 
-# --- [ ADDED: Test Endpoint for Telegram ] ---
+# --- [Test Endpoint for Telegram ] ---
 
 
 @app.route('/info')
@@ -267,7 +265,7 @@ def get_data():
         "happiness_score": latest_happiness_score
     })
 
-# --- [ MODIFIED: Trend Endpoint now calculates hourly average ] ---
+# --- [Trend Endpoint now calculates hourly average ] ---
 
 
 @app.route('/trend_data')
@@ -277,7 +275,6 @@ def get_trend_data():
         df = pd.read_csv(TREND_CSV_FILE_PATH)
 
         # 2. Convert timestamp column to datetime objects
-        # --- [ THIS IS THE ROBUST FIX ] ---
         # errors='coerce' turns bad data into NaT
         # utc=True forces all parsed timestamps into the UTC timezone
         df['timestamp'] = pd.to_datetime(
@@ -322,8 +319,6 @@ def init_csv(path, headers):
                 print(f"Created new CSV file: {path}")
             except Exception as e:
                 print(f"Error creating CSV file {path}: {e}")
-
-# ... (other routes like /download) ...
 
 
 @app.route('/download')
