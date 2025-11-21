@@ -45,12 +45,14 @@ The project is built on a high-performance, real-time **Publish/Subscribe (Pub/S
         * Logs all sensor data to `sensor_data.csv` and trend data to `happiness_trend.csv`.
         * **Serves a web UI** at `http://<server_ip>:5000` for live data visualization.
 
-3.  **Second ESP32 (Smart Home Hub):**
-    * **Subscriber/Actuator**
+3.  **Smart Home Hub (ASR-PRO & Second ESP32):**
+    * **Voice & Emotion Actuator Controller**
     * **Subscribes** to the `esp32/prediction` topic.
     * Displays the received emotion as an emoticon on its own OLED.
-    * Can be triggered (by a low score and a button press) into a "Relax Mode" to control actuators like servos (simulating opening a window) or mood lighting.
-    * Also supports manual control of connected home devices (servos, LEDs) via local buttons.
+    * **ASR-PRO Module:** Serves as the primary **offline voice recognition engine** and central actuator controller. It detects predefined voice commands and maps them to physical actions (e.g., driving servos for doors/windows, controlling lights) via a structured command–action mapping layer.
+    * **Sentiment Gateway (Second ESP32):** Acts as a bridge between the cloud and the offline hub. It **subscribes** to the `esp32/prediction` topic. When a low happiness score is detected, it sends a logic signal to the ASR-PRO to trigger an external interrupt.
+    * **Relax Mode:** Upon receiving the interrupt, the ASR-PRO enters a "Relax Mode," autonomously orchestrating an ambient response—activating breathing-light patterns, playing calming audio tracks, and adjusting servos—to soothe the user without requiring verbal commands.
+    * **Software Architecture:** The module employs **FreeRTOS** for asynchronous playback, queue-based inter-task communication, and Interrupt Service Routines (ISRs) for non-blocking event handling.
 
 
 ## 3. Hardware & Wiring
