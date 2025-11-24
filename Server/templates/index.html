@@ -22,6 +22,7 @@
             --accent-green: #73daca;
             --accent-blue: #7aa2f7;
             --accent-orange: #ff9e64;
+            --accent-purple: #9d7cd8;
             --border-color: #414868;
             --shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
         }
@@ -30,6 +31,18 @@
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
         }
 
         .info-button {
@@ -49,18 +62,6 @@
 
         .info-button:hover {
             background-color: #0057b3bd;
-        }
-
-        body {
-            font-family: 'Poppins', sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            padding: 20px;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
         }
 
         h1 {
@@ -87,6 +88,7 @@
             color: var(--accent-blue);
         }
 
+        /* --- GRID SYSTEM --- */
         .latest-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -101,11 +103,34 @@
             box-shadow: var(--shadow);
             transition: transform 0.2s ease, box-shadow 0.2s ease;
             border: 1px solid var(--border-color);
+            position: relative;
         }
 
         .metric-card:hover {
             transform: translateY(-5px);
             box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .metric-card.interactive {
+            cursor: pointer;
+            border: 1px solid var(--accent-purple);
+        }
+
+        .metric-card.interactive:hover {
+            background-color: #2e344e;
+        }
+
+        .tap-hint {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 0.7em;
+            background: var(--accent-purple);
+            color: #1a1b26;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: bold;
+            opacity: 0.8;
         }
 
         .metric-header {
@@ -130,6 +155,7 @@
             color: var(--text-color);
         }
 
+        /* --- CHART CARD STYLES --- */
         .chart-card {
             grid-column: 1 / -1;
             background-color: var(--card-color);
@@ -138,10 +164,136 @@
             box-shadow: var(--shadow);
             border: 1px solid var(--border-color);
             margin-bottom: 10px;
-            height: 480px;
+            /* Remove fixed height to allow content to dictate, but keep min-height */
+            min-height: 480px;
+            display: flex;
+            flex-direction: column;
         }
 
-        /* Responsive grid layout */
+        .chart-header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .chart-controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .time-btn {
+            background-color: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-dim);
+            padding: 5px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.2s;
+        }
+
+        .time-btn:hover {
+            background-color: #2e344e;
+            color: var(--text-color);
+        }
+
+        .time-btn.active {
+            background-color: var(--accent-blue);
+            color: #1a1b26;
+            border-color: var(--accent-blue);
+            font-weight: 600;
+        }
+
+        /* The specific wrapper to fix canvas overflow */
+        .chart-wrapper {
+            position: relative;
+            flex-grow: 1;
+            /* Take up remaining space */
+            width: 100%;
+            height: 350px;
+            /* Explicit height for the canvas container */
+            min-height: 300px;
+        }
+
+        /* --- MODAL STYLES --- */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(8px);
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal-content {
+            background-color: var(--card-color);
+            width: 90%;
+            max-width: 500px;
+            padding: 30px;
+            border-radius: 16px;
+            border: 1px solid var(--accent-green);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            transform: scale(0.9);
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .modal-overlay.active .modal-content {
+            transform: scale(1);
+        }
+
+        .modal-icon {
+            font-size: 3em;
+            color: var(--accent-green);
+            margin-bottom: 15px;
+        }
+
+        .modal-title {
+            font-size: 1.5em;
+            color: var(--text-color);
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+
+        .modal-text {
+            font-size: 1.1em;
+            color: var(--text-dim);
+            margin-bottom: 25px;
+            line-height: 1.6;
+        }
+
+        .close-btn {
+            background-color: var(--accent-green);
+            color: #1a1b26;
+            border: none;
+            padding: 10px 25px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background 0.2s;
+        }
+
+        .close-btn:hover {
+            background-color: #5acbbd;
+        }
+
+        /* --- Responsive Grid --- */
         @media (min-width: 900px) {
             .latest-grid {
                 grid-template-columns: repeat(4, 1fr);
@@ -172,7 +324,6 @@
                 grid-row: 2;
             }
 
-            /* --- ADDED: Explicit placement for other cards --- */
             .metric-card#temp-card {
                 grid-column: 1;
                 grid-row: 3;
@@ -224,7 +375,6 @@
                 grid-row: 2;
             }
 
-            /* --- ADDED: Explicit placement for other cards --- */
             .metric-card#temp-card {
                 grid-column: 1;
                 grid-row: 3;
@@ -246,7 +396,7 @@
             }
         }
 
-        /* ... (rest of your CSS) ... */
+        /* Logic specific styles */
         .metric-card.stressed {
             background-color: #4a2f2f;
             border-color: var(--accent-orange);
@@ -273,6 +423,7 @@
             color: var(--accent-blue);
         }
 
+        /* FontAwesome colors */
         .fa-heartbeat {
             color: #f7768e;
         }
@@ -333,14 +484,6 @@
             color: var(--text-dim);
         }
 
-        tbody tr {
-            transition: background-color 0.15s ease;
-        }
-
-        tbody tr:last-child td {
-            border-bottom: none;
-        }
-
         tbody tr:hover {
             background-color: #2e344e;
         }
@@ -350,26 +493,40 @@
 <body>
 
     <div class="container">
-
         <div id="device-header">
             User: <span id="device-name">--</span>
         </div>
         <h1>Emogotchi Dashboard</h1>
         <span id="latest-timestamp" style="color: var(--text-dim); font-size: 0.9em;">Loading...</span>
         <a href="/info" class="info-button">Info</a>
+
         <h2 style="margin-top: 10px;">Latest Readings</h2>
         <div class="latest-grid">
+
+            <!-- CHART CARD -->
             <div class="chart-card">
-                <h3 style="color: var(--text-dim); margin-bottom: 5px;">Happiness Trend (Last 24 Hours)
-                </h3>
-                <canvas id="happinessChart" width="812" height="500"
-                    style="display: block; box-sizing: border-box; height: 300px; width: 649.6px;"></canvas>
+                <div class="chart-header-row">
+                    <h3 style="color: var(--text-dim); margin: 0;">Happiness Trend</h3>
+                    <div class="chart-controls">
+                        <!-- Buttons to switch modes -->
+                        <button class="time-btn active" id="btn-24h" onclick="switchChartMode('24h')">24h</button>
+                        <button class="time-btn" id="btn-7d" onclick="switchChartMode('7d')">7 Days</button>
+                    </div>
+                </div>
+
+                <!-- Wrapper to fix X-axis overflow -->
+                <div class="chart-wrapper">
+                    <canvas id="happinessChart"></canvas>
+                </div>
             </div>
 
-            <div class="metric-card" id="stress-card">
-                <div class="metric-header"><i class="fas fa-brain"></i><span>Stress</span></div>
+            <!-- INTERACTIVE STRESS CARD -->
+            <div class="metric-card interactive" id="stress-card" onclick="showAdvice()">
+                <div class="tap-hint">View Tip</div>
+                <div class="metric-header"><i class="fas fa-brain"></i><span>Stress / Advice</span></div>
                 <div class="metric-value" id="latest-prediction">N/A</div>
             </div>
+
             <div class="metric-card" id="happiness-card">
                 <div class="metric-header"><i class="fas fa-smile"></i><span>Happiness</span></div>
                 <div class="metric-value" id="latest-happiness-score">--</div>
@@ -399,9 +556,8 @@
                 <div class="metric-header"><i class="fas fa-sun"></i><span>Light (LDR)</span></div>
                 <div class="metric-value" id="latest-ldr">--</div>
             </div>
-
-
         </div>
+
         <div class="history-card">
             <h2>Recent History (Last <span id="history-count">10</span> Readings)</h2>
             <table id="history-table">
@@ -422,8 +578,23 @@
         </div>
     </div>
 
+    <!-- AI ADVICE MODAL -->
+    <div class="modal-overlay" id="advice-modal">
+        <div class="modal-content">
+            <div class="modal-icon"><i class="fas fa-robot"></i></div>
+            <div class="modal-title">AI Wellness Coach</div>
+            <p class="modal-text" id="ai-suggestion-text">Waiting for AI analysis...</p>
+            <button class="close-btn" onclick="closeAdvice()">Close</button>
+        </div>
+    </div>
+
     <script>
-        // --- Cache DOM elements ---
+        // --- Global State for Chart Mode ---
+        let currentChartPeriod = '24h';
+        let happinessChart = null;
+        let latestSuggestion = "Gathering data for analysis...";
+
+        // --- DOM Elements ---
         const elements = {
             timestamp: document.getElementById('latest-timestamp'),
             deviceName: document.getElementById('device-name'),
@@ -435,15 +606,29 @@
             motion: document.getElementById('latest-motion'),
             prediction: document.getElementById('latest-prediction'),
             happinessScore: document.getElementById('latest-happiness-score'),
-            historyCount: document.getElementById('history-count'), // This will no longer be null
+            historyCount: document.getElementById('history-count'),
             tableBody: document.getElementById('history-table').querySelector('tbody'),
             stressCard: document.getElementById('stress-card'),
-            motionCard: document.getElementById('motion-card')
+            motionCard: document.getElementById('motion-card'),
+            adviceModal: document.getElementById('advice-modal'),
+            suggestionText: document.getElementById('ai-suggestion-text'),
+            btn24h: document.getElementById('btn-24h'),
+            btn7d: document.getElementById('btn-7d')
         };
 
-        let happinessChart = null;
+        // --- Modal Functions ---
+        function showAdvice() {
+            elements.suggestionText.innerText = latestSuggestion;
+            elements.adviceModal.classList.add('active');
+        }
+        function closeAdvice() {
+            elements.adviceModal.classList.remove('active');
+        }
+        elements.adviceModal.addEventListener('click', (e) => {
+            if (e.target === elements.adviceModal) closeAdvice();
+        });
 
-        // --- Chart Initialization ---
+        // --- Chart Functions ---
         function initChart() {
             const ctx = document.getElementById('happinessChart').getContext('2d');
             const gradient = ctx.createLinearGradient(0, 0, 0, 300);
@@ -460,16 +645,12 @@
                         backgroundColor: gradient,
                         fill: true,
                         pointRadius: 2,
-                        pointBackgroundColor: 'rgba(115, 218, 202, 1)',
-
-                        /* --- MODIFIED: Use a smooth, non-stepped line --- */
                         tension: 0.4,
-                        stepped: false,
                     }]
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: false,
+                    maintainAspectRatio: false, // Important for responsive container
                     scales: {
                         y: {
                             beginAtZero: true,
@@ -479,33 +660,46 @@
                         },
                         x: {
                             type: 'time',
-                            /* --- MODIFIED: Time scale for 24h view --- */
                             time: {
-                                unit: 'hour', // Still good to group by hour
-                                tooltipFormat: 'MMM d, HH:mm',
+                                unit: 'hour', // Default
                                 displayFormats: {
-                                    hour: 'HH:mm'
+                                    hour: 'HH:mm',
+                                    day: 'MMM d'
                                 }
                             },
                             ticks: { color: '#a9b1d6' },
                             grid: { display: false }
                         }
                     },
-                    plugins: {
-                        legend: { display: false }
-                    }
+                    plugins: { legend: { display: false } }
                 }
             });
         }
-        // --- Function to update trendline (every 60s) ---
+
+        // --- Mode Switcher Logic ---
+        function switchChartMode(mode) {
+            currentChartPeriod = mode;
+
+            // Toggle Button Classes
+            if (mode === '24h') {
+                elements.btn24h.classList.add('active');
+                elements.btn7d.classList.remove('active');
+            } else {
+                elements.btn24h.classList.remove('active');
+                elements.btn7d.classList.add('active');
+            }
+
+            // Fetch new data immediately
+            updateTrendline();
+        }
+
+        // --- Update Trendline ---
         async function updateTrendline() {
             try {
-                console.log("Fetching /trend_data...");
-                const response = await fetch('/trend_data');
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                const trendData = await response.json(); // This is our 24h hourly avg
+                // Pass the current period (24h or 7d) to the server
+                const response = await fetch(`/trend_data?period=${currentChartPeriod}`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const trendData = await response.json();
 
                 if (happinessChart) {
                     const chartData = trendData.map(entry => ({
@@ -513,38 +707,42 @@
                         y: entry.happiness_score
                     }));
 
+                    // Update Data
                     happinessChart.data.datasets[0].data = chartData;
+
+                    // Update Axis Formatting based on mode
+                    if (currentChartPeriod === '7d') {
+                        happinessChart.options.scales.x.time.unit = 'day';
+                        happinessChart.options.scales.x.time.tooltipFormat = 'MMM d, HH:mm';
+                    } else {
+                        happinessChart.options.scales.x.time.unit = 'hour';
+                        happinessChart.options.scales.x.time.tooltipFormat = 'HH:mm';
+                    }
+
                     happinessChart.update();
                 }
-
             } catch (error) {
                 console.error("Failed to fetch trend data:", error);
             }
         }
 
-
-        // --- Function to update metrics (every 5s) ---
+        // --- Update Real-time Metrics (every 5s) ---
         async function updateData() {
             try {
                 const response = await fetch('/data');
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
 
+                if (data.suggestion) latestSuggestion = data.suggestion;
                 const latest = data.latest || {};
 
-                // --- [ MODIFIED: Parse ISO timestamp ] ---
                 let simpleTime = '--:--:--';
                 if (latest.timestamp) {
-                    const d = new Date(latest.timestamp); // Create Date object from ISO string
-                    simpleTime = d.toLocaleTimeString();  // Format to local time (e.g., "6:30:15 PM")
+                    const d = new Date(latest.timestamp);
+                    simpleTime = d.toLocaleTimeString();
                 }
                 elements.timestamp.textContent = `Last update: ${simpleTime}`;
-                // --- [ END OF MODIFICATION ] ---
-
                 elements.deviceName.textContent = latest.device_name || 'Unknown';
-
                 elements.bpm.textContent = latest.bpm !== undefined ? latest.bpm.toFixed(1) : '--';
                 elements.temp.textContent = latest.temperature !== undefined ? `${latest.temperature.toFixed(1)}°C` : '--';
                 elements.hum.textContent = latest.humidity !== undefined ? `${latest.humidity.toFixed(0)}%` : '--';
@@ -558,6 +756,7 @@
                 elements.prediction.textContent = predictionText;
                 elements.happinessScore.textContent = data.happiness_score !== undefined ? data.happiness_score.toFixed(1) : '--';
 
+                // Cards styling
                 if (predictionText === 'Sad' || predictionText === 'Stressed') {
                     elements.stressCard.classList.add('stressed');
                 } else {
@@ -569,22 +768,18 @@
                     elements.motionCard.classList.remove('in-motion');
                 }
 
+                // Table Update
                 const history = data.history || [];
                 elements.tableBody.innerHTML = '';
                 elements.historyCount.textContent = history.length;
-
                 history.reverse().forEach(entry => {
                     const row = elements.tableBody.insertRow();
-
-                    // --- [ MODIFIED: Parse ISO timestamp for table ] ---
                     let entryTime = '--:--:--';
                     if (entry.timestamp) {
                         const d = new Date(entry.timestamp);
                         entryTime = d.toLocaleTimeString();
                     }
                     row.insertCell().textContent = entryTime;
-                    // --- [ END OF MODIFICATION ] ---
-
                     row.insertCell().textContent = entry.bpm !== undefined ? entry.bpm.toFixed(1) : '--';
                     row.insertCell().textContent = entry.temperature !== undefined ? entry.temperature.toFixed(1) : '--';
                     row.insertCell().textContent = entry.humidity !== undefined ? entry.humidity.toFixed(0) : '--';
@@ -600,17 +795,14 @@
             }
         }
 
-        // --- Page Load & Timers ---
         document.addEventListener('DOMContentLoaded', (event) => {
             initChart();
-            updateData(); // Fetch 5s data immediately
-            updateTrendline(); // Fetch 60s data immediately
+            updateData();
+            updateTrendline(); // Default is 24h
         });
 
-        // Update metrics every 5 seconds
         setInterval(updateData, 5000);
-        // Update trendline every 60 seconds
-        setInterval(updateTrendline, 60000); 
+        setInterval(() => updateTrendline(), 60000); 
     </script>
 </body>
 

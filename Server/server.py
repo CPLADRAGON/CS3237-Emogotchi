@@ -12,7 +12,13 @@ import numpy as np
 from tensorflow.keras.models import load_model
 from datetime import datetime, timedelta, timezone
 import requests
-
+import google.generativeai as genai  # Import Google's library
+# --- AI Configuration ---
+# Replace with your actual key
+GOOGLE_API_KEY = "AIzaSyA5jjRmpcW1GHpkYW6tOcuuCeIK2NxsIKQ"
+genai.configure(api_key=GOOGLE_API_KEY)
+ai_model = genai.GenerativeModel('gemini-pro')  # Use the 'gemini-pro' model
+latest_suggestion = "Waiting for data..."  # New variable for AI advice
 # --- Flask, Data Storage ---
 app = Flask(__name__)
 TIME_STEPS = 10
@@ -146,7 +152,7 @@ def map_score_to_emotion(score):
 
 
 def on_message(client, userdata, msg):
-    global latest_data, latest_prediction, latest_happiness_score, sensor_data_history
+    global latest_data, latest_prediction, latest_happiness_score, sensor_data_history, latest_suggestion
 
     try:
         data = json.loads(msg.payload.decode())
@@ -174,14 +180,18 @@ def on_message(client, userdata, msg):
             global g_last_notification_time
             if score < 33:
                 current_time = time.time()
+                latest_suggestion = generate_ai_suggestion(latest_data, score)
+                suggestion = latest_suggestion
                 # Check if cooldown has passed
                 if (current_time - g_last_notification_time) > NOTIFICATION_COOLDOWN_SEC:
                     print(f"Score is {score}, triggering Telegram alert.")
                     g_last_notification_time = current_time  # Reset cooldown
-                    message = f"🚨 LOW HAPPINESS ALERT 🚨\n\nDevice '{data.get('device_name', 'ESP32')}' reports a happiness score of: {score}"
+                    message = f"🚨 LOW HAPPINESS ALERT 🚨\n\nDevice '{data.get('device_name', 'ESP32')}' reports a happiness score of: {score}\n\nTip: {suggestion}"
                     send_telegram_notification(message)
                 else:
                     print(f"Score is {score}, but in notification cooldown.")
+            else:
+                latest_suggestion = "Keep up the good work!"
 
             # Update global state
             latest_happiness_score = score
@@ -218,6 +228,22 @@ def on_message(client, userdata, msg):
 
     except Exception as e:
         print(f"An error occurred in on_message: {e}")
+
+
+def generate_ai_suggestion(sensor_data, happiness_score):
+    prompt = f"""
+    Act as a friendly wellness coach for a student.
+    Status: Heart Rate {sensor_data.get('bpm', 0)} BPM, Noise {sensor_data.get('noise', 0)}, Temp {sensor_data.get('temperature', 0)}C.
+    Happiness Score: {happiness_score}/100 (Low=Stressed, High=Happy).
+    
+    Give one short, specific piece of advice (max 15 words) to improve their state.
+    """
+    try:
+        response = ai_model.generate_content(prompt)
+        return response.text.strip()
+    except Exception as e:
+        print(f"AI Error: {e}")
+        return "Take a deep breath."
 
 
 # --- MQTT Client Setup ---
@@ -262,47 +288,82 @@ def get_data():
         "latest": latest_data,
         "history": list(sensor_data_history),
         "prediction": latest_prediction,
-        "happiness_score": latest_happiness_score
+        "happiness_score": latest_happiness_score,
+        "suggestion": latest_suggestion
     })
 
 # --- [Trend Endpoint now calculates hourly average ] ---
 
 
+# @app.route('/trend_data')
+# def get_trend_data():
+#     try:
+#         # 1. Read the trend data
+#         df = pd.read_csv(TREND_CSV_FILE_PATH)
+
+#         # 2. Convert timestamp column to datetime objects
+#         # errors='coerce' turns bad data into NaT
+#         # utc=True forces all parsed timestamps into the UTC timezone
+#         df['timestamp'] = pd.to_datetime(
+#             df['timestamp'], errors='coerce', utc=True)
+#         # --- [ END OF FIX ] ---
+
+#         # 3. Drop any rows where the timestamp was bad
+#         df.dropna(subset=['timestamp'], inplace=True)
+
+#         # 4. Get the cutoff for 24 hours ago (which is already UTC)
+#         one_day_ago = datetime.now(timezone.utc) - timedelta(hours=24)
+
+#         # 5. Filter the DataFrame for the last 24 hours
+#         # This comparison will now work
+#         df_filtered = df[df['timestamp'] >= one_day_ago]
+
+#         # 6. Replace any NaN/NaT with None, which becomes 'null' in JSON
+#         df_final = df_filtered.where(pd.notnull(df_filtered), None)
+
+#         # 7. Convert back to ISO string for JSON
+#         df_final['timestamp'] = df_final['timestamp'].apply(
+#             lambda x: x.isoformat() if pd.notnull(x) else None)
+
+#         # 8. Return the raw, filtered, and CLEANED data as JSON
+#         return jsonify(df_final.to_dict(orient='records'))
+
+#     except FileNotFoundError:
+#         return jsonify([])  # Send empty list if file doesn't exist yet
+#     except Exception as e:
+#         print(f"Error in /trend_data: {e}")
+#         return jsonify({"error": str(e)}), 500
 @app.route('/trend_data')
 def get_trend_data():
     try:
-        # 1. Read the trend data
-        df = pd.read_csv(TREND_CSV_FILE_PATH)
+        # Get period from URL query, default to '24h'
+        period = request.args.get('period', '24h')
 
-        # 2. Convert timestamp column to datetime objects
-        # errors='coerce' turns bad data into NaT
-        # utc=True forces all parsed timestamps into the UTC timezone
+        df = pd.read_csv(TREND_CSV_FILE_PATH)
         df['timestamp'] = pd.to_datetime(
             df['timestamp'], errors='coerce', utc=True)
-        # --- [ END OF FIX ] ---
-
-        # 3. Drop any rows where the timestamp was bad
         df.dropna(subset=['timestamp'], inplace=True)
 
-        # 4. Get the cutoff for 24 hours ago (which is already UTC)
-        one_day_ago = datetime.now(timezone.utc) - timedelta(hours=24)
+        # Determine time cutoff based on request
+        now = datetime.now(timezone.utc)
+        if period == '7d':
+            cutoff = now - timedelta(days=7)
+        else:  # Default to 24 hours
+            cutoff = now - timedelta(hours=24)
 
-        # 5. Filter the DataFrame for the last 24 hours
-        # This comparison will now work
-        df_filtered = df[df['timestamp'] >= one_day_ago]
-
-        # 6. Replace any NaN/NaT with None, which becomes 'null' in JSON
+        df_filtered = df[df['timestamp'] >= cutoff]
         df_final = df_filtered.where(pd.notnull(df_filtered), None)
 
-        # 7. Convert back to ISO string for JSON
+        # Sort by time just in case
+        df_final = df_final.sort_values(by='timestamp')
+
         df_final['timestamp'] = df_final['timestamp'].apply(
             lambda x: x.isoformat() if pd.notnull(x) else None)
 
-        # 8. Return the raw, filtered, and CLEANED data as JSON
         return jsonify(df_final.to_dict(orient='records'))
 
     except FileNotFoundError:
-        return jsonify([])  # Send empty list if file doesn't exist yet
+        return jsonify([])
     except Exception as e:
         print(f"Error in /trend_data: {e}")
         return jsonify({"error": str(e)}), 500
