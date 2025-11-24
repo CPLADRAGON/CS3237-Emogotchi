@@ -773,36 +773,35 @@
             updateTrendline();
         }
 
-        async function updateTrendline() {
-            try {
-                const response = await fetch(`/trend_data?period=${currentChartPeriod}`);
-                const data = await response.json();
-                if (happinessChart) {
-                    happinessChart.data.datasets[0].data = data.map(d => ({ x: d.timestamp, y: d.happiness_score }));
-
-                    if (currentChartPeriod === '7d') {
-                        happinessChart.options.scales.x.time.unit = 'day';
-                        happinessChart.options.scales.x.time.tooltipFormat = 'MMM d, HH:mm';
-                    } else {
-                        happinessChart.options.scales.x.time.unit = 'hour';
-                        happinessChart.options.scales.x.time.tooltipFormat = 'HH:mm';
-                    }
-                    happinessChart.update();
-                }
-            } catch (e) { console.error("Chart Error", e); }
-        }
-
-        // --- MAIN DATA UPDATE LOOP ---
+        // --- REPLACE YOUR EXISTING updateData FUNCTION WITH THIS ---
         async function updateData() {
             try {
                 const response = await fetch('/data');
                 const data = await response.json();
                 const latest = data.latest || {};
 
-                // 1. Connection Status (Check if data is stale > 15s)
+                // --- FIXED CONNECTION LOGIC ---
                 const now = new Date();
-                const dataTime = latest.timestamp ? new Date(latest.timestamp) : new Date(0);
-                const isOnline = (now - dataTime) < 15000; // 15 seconds threshold
+
+                // 1. Safe Date Parsing
+                let dataTime = new Date(0);
+                if (latest.timestamp) {
+                    // Ensure we handle the Python ISO format correctly
+                    // If Python sends "+00:00", JS handles it, but let's be safe
+                    dataTime = new Date(latest.timestamp);
+                }
+
+                // 2. Calculate Difference (in seconds)
+                // We use Math.abs to handle if your computer clock is slightly BEHIND the server
+                const diffSeconds = Math.abs((now - dataTime) / 1000);
+
+                // 3. Debugging (Press F12 in browser -> Console to see this)
+                console.log(`Browser Time: ${now.toLocaleTimeString()}`);
+                console.log(`Server Data Time: ${dataTime.toLocaleTimeString()}`);
+                console.log(`Difference: ${diffSeconds.toFixed(1)} seconds`);
+
+                // 4. Threshold: Increased to 60 seconds to tolerate clock drift/timezone lag
+                const isOnline = diffSeconds < 60;
 
                 if (isOnline) {
                     dom.statusDot.className = 'status-dot online';
@@ -811,31 +810,30 @@
                     dom.statusDot.className = 'status-dot offline';
                     dom.statusText.innerText = "Offline / No Data";
                 }
+                // --- END OF FIXED LOGIC ---
 
                 dom.deviceName.innerText = latest.device_name || 'ESP32';
                 if (data.suggestion) latestSuggestion = data.suggestion;
 
-                // 2. Avatar & Emotion
+                // Avatar & Emotion
                 const prediction = data.prediction || "Normal";
                 dom.prediction.innerText = prediction;
                 dom.score.innerText = `${(data.happiness_score || 0).toFixed(1)}/100`;
 
-                // Reset Avatar classes
                 dom.avatarFace.className = 'avatar-face';
-                document.body.className = ''; // Reset background mood
+                document.body.className = '';
 
                 if (prediction === 'Happy') {
                     dom.avatarFace.classList.add('state-happy');
                     document.body.classList.add('mood-happy');
                 } else if (prediction === 'Sad' || prediction === 'Stressed') {
-                    dom.avatarFace.classList.add('state-stressed'); // Use stressed anim for sad too
+                    dom.avatarFace.classList.add('state-stressed');
                     document.body.classList.add('mood-stressed');
                 } else {
-                    // Normal state (default CSS)
                     dom.avatarFace.classList.add('state-normal');
                 }
 
-                // 3. Update Numeric Values
+                // Numeric Values
                 const bpm = latest.bpm || 0;
                 const hum = latest.humidity || 0;
 
@@ -847,25 +845,25 @@
                 dom.valBpm.innerText = bpm.toFixed(0);
                 dom.valHum.innerText = hum.toFixed(0);
 
-                // 4. Update Gauges
-                setGauge(dom.gaugeBpm, bpm, 180); // Max BPM 180
-                setGauge(dom.gaugeHum, hum, 100); // Max Hum 100
+                setGauge(dom.gaugeBpm, bpm, 180);
+                setGauge(dom.gaugeHum, hum, 100);
 
-                // 5. Update Table
+                // Table
                 const history = data.history || [];
                 dom.tableBody.innerHTML = '';
                 history.reverse().forEach(entry => {
                     const row = dom.tableBody.insertRow();
-                    const time = entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--';
+                    // Display time in local browser time
+                    const timeStr = entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--';
                     row.innerHTML = `
-                        <td>${time}</td>
-                        <td>${(entry.bpm || 0).toFixed(0)}</td>
-                        <td>${(entry.temperature || 0).toFixed(1)}</td>
-                        <td>${(entry.humidity || 0).toFixed(0)}</td>
-                        <td>${(entry.noise || 0).toFixed(0)}</td>
-                        <td>${(entry.ldr || 0).toFixed(0)}</td>
-                        <td>${(entry.happiness_score || 0).toFixed(1)}</td>
-                    `;
+                <td>${timeStr}</td>
+                <td>${(entry.bpm || 0).toFixed(0)}</td>
+                <td>${(entry.temperature || 0).toFixed(1)}</td>
+                <td>${(entry.humidity || 0).toFixed(0)}</td>
+                <td>${(entry.noise || 0).toFixed(0)}</td>
+                <td>${(entry.ldr || 0).toFixed(0)}</td>
+                <td>${(entry.happiness_score || 0).toFixed(1)}</td>
+            `;
                 });
 
             } catch (e) {
@@ -874,7 +872,6 @@
                 dom.statusText.innerText = "Server Error";
             }
         }
-
         // --- INIT ---
         window.addEventListener('DOMContentLoaded', () => {
             initChart();
