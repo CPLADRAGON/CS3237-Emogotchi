@@ -15,7 +15,7 @@ import requests
 import google.generativeai as genai  # Import Google's library
 # --- AI Configuration ---
 # Replace with your actual key
-GOOGLE_API_KEY = "AIzaSyA5jjRmpcW1GHpkYW6tOcuuCeIK2NxsIKQ"
+GOOGLE_API_KEY = "Hidden"
 genai.configure(api_key=GOOGLE_API_KEY)
 ai_model = genai.GenerativeModel(
     'gemini-2.0-flash')  # Use the 'gemini-pro' model
@@ -293,47 +293,7 @@ def get_data():
         "suggestion": latest_suggestion
     })
 
-# --- [Trend Endpoint now calculates hourly average ] ---
 
-
-# @app.route('/trend_data')
-# def get_trend_data():
-#     try:
-#         # 1. Read the trend data
-#         df = pd.read_csv(TREND_CSV_FILE_PATH)
-
-#         # 2. Convert timestamp column to datetime objects
-#         # errors='coerce' turns bad data into NaT
-#         # utc=True forces all parsed timestamps into the UTC timezone
-#         df['timestamp'] = pd.to_datetime(
-#             df['timestamp'], errors='coerce', utc=True)
-#         # --- [ END OF FIX ] ---
-
-#         # 3. Drop any rows where the timestamp was bad
-#         df.dropna(subset=['timestamp'], inplace=True)
-
-#         # 4. Get the cutoff for 24 hours ago (which is already UTC)
-#         one_day_ago = datetime.now(timezone.utc) - timedelta(hours=24)
-
-#         # 5. Filter the DataFrame for the last 24 hours
-#         # This comparison will now work
-#         df_filtered = df[df['timestamp'] >= one_day_ago]
-
-#         # 6. Replace any NaN/NaT with None, which becomes 'null' in JSON
-#         df_final = df_filtered.where(pd.notnull(df_filtered), None)
-
-#         # 7. Convert back to ISO string for JSON
-#         df_final['timestamp'] = df_final['timestamp'].apply(
-#             lambda x: x.isoformat() if pd.notnull(x) else None)
-
-#         # 8. Return the raw, filtered, and CLEANED data as JSON
-#         return jsonify(df_final.to_dict(orient='records'))
-
-#     except FileNotFoundError:
-#         return jsonify([])  # Send empty list if file doesn't exist yet
-#     except Exception as e:
-#         print(f"Error in /trend_data: {e}")
-#         return jsonify({"error": str(e)}), 500
 @app.route('/trend_data')
 def get_trend_data():
     try:
