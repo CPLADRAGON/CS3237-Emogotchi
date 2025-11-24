@@ -18,7 +18,7 @@ import google.generativeai as genai  # Import Google's library
 GOOGLE_API_KEY = "AIzaSyA5jjRmpcW1GHpkYW6tOcuuCeIK2NxsIKQ"
 genai.configure(api_key=GOOGLE_API_KEY)
 ai_model = genai.GenerativeModel(
-    'gemini-1.5-flash')  # Use the 'gemini-pro' model
+    'gemini-2.0-flash')  # Use the 'gemini-pro' model
 latest_suggestion = "Waiting for data..."  # New variable for AI advice
 # --- Flask, Data Storage ---
 app = Flask(__name__)
