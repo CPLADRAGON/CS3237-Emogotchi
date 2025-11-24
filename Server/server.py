@@ -15,7 +15,7 @@ import requests
 import google.generativeai as genai  # Import Google's library
 # --- AI Configuration ---
 # Replace with your actual key
-GOOGLE_API_KEY = "AIzaSyA5jjRmpcW1GHpkYW6tOcuuCeIK2NxsIKQ"
+GOOGLE_API_KEY = "Hidden"
 genai.configure(api_key=GOOGLE_API_KEY)
 ai_model = genai.GenerativeModel(
     'gemini-2.0-flash')  # Use the 'gemini-pro' model
