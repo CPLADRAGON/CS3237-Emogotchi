@@ -801,7 +801,7 @@
                 console.log(`Difference: ${diffSeconds.toFixed(1)} seconds`);
 
                 // 4. Threshold: Increased to 60 seconds to tolerate clock drift/timezone lag
-                const isOnline = diffSeconds < 60;
+                const isOnline = diffSeconds < 100;
 
                 if (isOnline) {
                     dom.statusDot.className = 'status-dot online';
