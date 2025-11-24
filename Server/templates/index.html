@@ -772,7 +772,42 @@
             }
             updateTrendline();
         }
+        // --- REPLACE YOUR EXISTING updateTrendline FUNCTION WITH THIS ---
+        async function updateTrendline() {
+            try {
+                console.log("Fetching trend data..."); // Debug log to Console
+                const response = await fetch(`/trend_data?period=${currentChartPeriod}`);
 
+                if (!response.ok) throw new Error("Network response was not ok");
+
+                const data = await response.json();
+                console.log(`Received ${data.length} trend points.`); // Debug log
+
+                if (happinessChart) {
+                    // CRITICAL FIX: Explicitly convert timestamp strings to JavaScript Date objects
+                    // This ensures Chart.js understands exactly where to put the point
+                    const formattedData = data.map(d => ({
+                        x: new Date(d.timestamp),
+                        y: d.happiness_score
+                    }));
+
+                    happinessChart.data.datasets[0].data = formattedData;
+
+                    // Adjust time format based on selection
+                    if (currentChartPeriod === '7d') {
+                        happinessChart.options.scales.x.time.unit = 'day';
+                        happinessChart.options.scales.x.time.tooltipFormat = 'MMM d, HH:mm';
+                    } else {
+                        happinessChart.options.scales.x.time.unit = 'hour';
+                        happinessChart.options.scales.x.time.tooltipFormat = 'HH:mm';
+                    }
+
+                    happinessChart.update();
+                }
+            } catch (e) {
+                console.error("Chart Update Error:", e);
+            }
+        }
         // --- REPLACE YOUR EXISTING updateData FUNCTION WITH THIS ---
         async function updateData() {
             try {
