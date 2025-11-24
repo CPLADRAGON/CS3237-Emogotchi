@@ -11,13 +11,16 @@ Students often spend long hours studying and can become unaware of accumulating 
 
 **Emogotchi** is a real-time, multi-device IoT system designed to monitor a student's well-being. The system uses a multi-sensor **Main ESP32** device to capture physiological data (BPM, motion) and environmental data (temperature, humidity, noise, light).
 
-This data is published via MQTT to a cloud server, which uses a time-series **LSTM (Long Short-Term Memory) machine learning model** to predict a "happiness score" (0-100) based on the last 10 data points.
+This data is published via MQTT to a cloud server, which uses a time-series **LSTM (Long Short-Term Memory) machine learning model** to predict a "happiness score" (0-100).
 
-This prediction is then sent back to two subscriber devices, creating a **closed-loop feedback system**:
-1.  The **Main ESP32 (Emogotchi)** displays the user's current emotion (e.g., "Happy", "Normal", "Sad") on its OLED screen and a dynamic RGB LED.
-2.  A **Second ESP32 (Smart Home Hub)** receives the same data, displays an emoticon on its own OLED, and can trigger "relax mode" routines (e.g., mood lighting, or servos) to actively improve the user's environment.
+**New: AI Wellness Coach**  
+The system now integrates **Google Gemini 2.0 Flash AI**. It analyzes the raw sensor data and the predicted happiness score to generate context-aware, personalized wellness tips (e.g., "High noise detected, try finding a quieter spot" or "Heart rate elevated, take a deep breath").
 
-The server also logs all data to CSV, provides a live web dashboard with 24-hour trend analysis, and can send critical alerts via **Telegram** if the user's happiness score is too low.
+This creates a **closed-loop feedback system**:
+1.  **Emogotchi Device:** Displays current emotion ("Happy", "Normal", "Sad") on OLED and RGB LED.
+2.  **Smart Home Hub:** Triggers physical actuators (servos, lights) and "Relax Mode" routines based on the user's state.
+3.  **Web Dashboard:** Displays live data, 24-hour/7-day trends, and offers an **interactive AI advice modal** to coach the user back to a balanced state.
+4.  **Telegram:** Sends critical alerts if the score drops below a threshold.
 
 ## 2. System Architecture
 
@@ -29,7 +32,7 @@ The project is built on a high-performance, real-time **Publish/Subscribe (Pub/S
     * **Core 1 (Sensors):** Gathers data from the MPU6050 (interrupt-driven), DHT11, Pulse Sensor, Sound Sensor, and LDR.
     * **Core 0 (Network):** Manages Wi-Fi and MQTT.
     * **Publishes** a JSON payload of sensor data to the `esp32/sensor_data` topic.
-    * **Subscribes** to the `esp32/prediction` topic to receive real-time commands from the server.
+    * **Subscribes** to the `esp32/prediction` topic to receive real-time commands.
     * Displays the received emotion on its OLED screen and RGB LED.
 
 2.  **Cloud Server (DigitalOcean Droplet):**
@@ -38,22 +41,22 @@ The project is built on a high-performance, real-time **Publish/Subscribe (Pub/S
     * Runs a **Python Flask Server** (`server.py`):
         * **Subscribes** to `esp32/sensor_data`.
         * Collects a sequence of 10 data points.
-        * Feeds the sequence into a trained **Keras/TensorFlow LSTM model** (`emogotchi_lstm_regressor.h5`) to predict a "happiness score" (0-100).
-        * Maps the score to an emotion ("Happy", "Normal", "Sad").
-        * **Publishes** the emotion and score (e.g., `"Sad:22.5"`) back to the `esp32/prediction` topic.
-        * Sends a **Telegram alert** if the score drops below a critical threshold.
-        * Logs all sensor data to `sensor_data.csv` and trend data to `happiness_trend.csv`.
-        * **Serves a web UI** at `http://<server_ip>:5000` for live data visualization.
+        * Feeds the sequence into a trained **Keras/TensorFlow LSTM model** to predict a "happiness score" (0-100).
+        * **Generative AI:** Calls the **Google Gemini API** to generate text-based wellness advice based on specific sensor readings.
+        * **Publishes** the emotion and score back to `esp32/prediction`.
+        * Sends **Telegram alerts** for critical stress levels.
+        * Logs data to `sensor_data.csv` and `happiness_trend.csv`.
+        * **Serves a Web UI:**
+            * Live sensor metrics.
+            * **Interactive Stress Card:** Clicking opens a modal with the AI's latest advice.
+            * **Dynamic Charts:** Users can toggle between 24-Hour and 7-Day history views.
 
 3.  **Smart Home Hub (ASR-PRO & Second ESP32):**
     * **Voice & Emotion Actuator Controller**
     * **Subscribes** to the `esp32/prediction` topic.
-    * Displays the received emotion as an emoticon on its own OLED.
-    * **ASR-PRO Module:** Serves as the primary **offline voice recognition engine** and central actuator controller. It detects predefined voice commands and maps them to physical actions (e.g., driving servos for doors/windows, controlling lights) via a structured command–action mapping layer.
-    * **Sentiment Gateway (Second ESP32):** Acts as a bridge between the cloud and the offline hub. It **subscribes** to the `esp32/prediction` topic. When a low happiness score is detected, it sends a logic signal to the ASR-PRO to trigger an external interrupt.
-    * **Relax Mode:** Upon receiving the interrupt, the ASR-PRO enters a "Relax Mode," autonomously orchestrating an ambient response—activating breathing-light patterns, playing calming audio tracks, and adjusting servos—to soothe the user without requiring verbal commands.
-    * **Software Architecture:** The module employs **FreeRTOS** for asynchronous playback, queue-based inter-task communication, and Interrupt Service Routines (ISRs) for non-blocking event handling.
-
+    * **ASR-PRO Module:** Serves as the primary **offline voice recognition engine** and central actuator controller.
+    * **Sentiment Gateway (Second ESP32):** Acts as a bridge between the cloud and the offline hub. When a low happiness score is detected, it triggers the ASR-PRO via interrupt.
+    * **Relax Mode:** Upon trigger, the ASR-PRO autonomously orchestrates an ambient response—activating breathing-light patterns, playing calming audio, and adjusting servos.
 
 ## 3. Hardware & Wiring
 
@@ -101,120 +104,85 @@ The project is built on a high-performance, real-time **Publish/Subscribe (Pub/S
 
 1.  **Create Droplet:**
     * **Image:** Ubuntu 22.04 (LTS)
-    * **Plan:** Basic Regular (cheapest option is fine)
+    * **Plan:** Basic Regular
     * **Region:** Singapore
-    * **Authentication:** Password (create a root password)
-    * Copy the Droplet's **public IP address**.
+    * **Authentication:** Password
 
 2.  **SSH into Server:**
     ```bash
     ssh root@[your_droplet_ip]
     ```
 
-3.  **Install Software:**
+3.  **Install System Dependencies:**
     ```bash
-    # Update package lists
     apt update
-    
-    # Install Mosquitto MQTT Broker and Git
-    apt install mosquitto mosquitto-clients git
-    
-    # Install Python 3, pip, and venv (virtual environment)
-    apt install python3-pip python3-venv
+    apt install mosquitto mosquitto-clients git python3-pip python3-venv
     ```
 
 4.  **Configure Mosquitto (Broker):**
-    * Create a new config file:
-        ```bash
-        nano /etc/mosquitto/conf.d/default.conf
-        ```
-    * Add these two lines to the file to allow all connections:
+    * Edit config: `nano /etc/mosquitto/conf.d/default.conf`
+    * Add:
         ```
         listener 1883 0.0.0.0
         allow_anonymous true
         ```
-    * Save (**Ctrl+O**) and Exit (**Ctrl+X**).
-    * Restart Mosquitto to apply changes:
-        ```bash
-        systemctl restart mosquitto
-        ```
+    * Restart: `systemctl restart mosquitto`
 
 5.  **Configure Firewall:**
     ```bash
-    ufw allow ssh  # Port 22
-    ufw allow 1883 # Port 1883 (MQTT)
-    ufw allow 5000 # Port 5000 (Flask Web UI)
+    ufw allow ssh
+    ufw allow 1883
+    ufw allow 5000
     ufw enable
     ```
 
 6.  **Set Up Project Code (Flask Server):**
     ```bash
-    # Go to your home directory
     cd ~
+    git clone https://github.com/CPLADRAGON/CS3237-Emogotchi.git
+    cd CS3237-Emogotchi
     
-    # Clone your project repo
-    git clone [https://github.com/CPLADRAGON/CS3237-Emogotchi.git](https://github.com/CPLADRAGON/CS3237-Emogotchi.git)
-    cd CS3237-Emogotchi # Or your repo name
-    
-    # Create and activate a Python virtual environment
+    # Create and activate virtual environment
     python3 -m venv venv
     source venv/bin/activate
     
-    # Install Python libraries
-    # (You can also 'pip install -r requirements.txt' if you create one)
-    pip install flask paho-mqtt pandas scikit-learn joblib numpy tensorflow requests
+    # Install Python libraries (Includes new Google AI dependency)
+    pip install flask paho-mqtt pandas scikit-learn joblib numpy tensorflow requests google-generativeai
     
-    # Run the ML training script to create the model/scaler files
-    # (Make sure your training CSV is in the repo)
+    # Train Model
     python train_model.py 
     ```
 
+7.  **API Key Configuration:**
+    * Ensure your `server.py` contains a valid `GOOGLE_API_KEY`.
+    * Ensure the `ai_model` in `server.py` is set to `gemini-2.0-flash`.
+
 ### B. ESP32 Devices (Local)
 
-1.  **IDE:** Use the Arduino IDE.
-2.  **Boards Manager:** Install the **"ESP32"** board package.
-3.  **Libraries:** Install the following from the Library Manager:
-    * `PubSubClient` (by Nick O'Leary)
-    * `Adafruit MPU6050`
-    * `Adafruit GFX Library`
-    * `Adafruit SSD1306`
-    * `DHT sensor library`
-    * `ArduinoJson`
-    * `ESP32Servo` (for the optional 2nd ESP32)
-
-4.  **Configure Code:**
-    * Open the `.ino` file for your Main ESP32.
-    * Update your Wi-Fi `ssid` and `password`.
-    * Update `const char* mqtt_server` to your Droplet's public IP address.
+1.  **IDE:** Arduino IDE with "ESP32" board package installed.
+2.  **Libraries:** `PubSubClient`, `Adafruit MPU6050`, `Adafruit GFX`, `Adafruit SSD1306`, `DHT sensor library`, `ArduinoJson`, `ESP32Servo`.
+3.  **Configure:** Update Wi-Fi credentials and MQTT Server IP in the `.ino` files.
 
 ### C. Telegram Bot Setup
 
-1.  Open the Telegram app and search for the **BotFather**.
-2.  Send `/newbot` and follow the instructions to create a bot.
-3.  Copy the **Bot Token** (e.g., `7393315205:AAE...`) and paste it into `BOT_TOKEN` in `server.py`.
-4.  Create a new Telegram **group** and add your new bot to it.
-5.  Send a test message to the group (e.g., `/start`).
-6.  Open your browser and go to this URL (replace with your token):
-    `https://api.telegram.org/bot[YOUR_TOKEN]/getUpdates`
-7.  Look for the `chat` object in the JSON response. Find the `id` (e.g., `-5025276308`) and paste it into `CHAT_ID` in `server.py`.
+1.  Create a bot via **BotFather** on Telegram.
+2.  Get **Bot Token** and **Chat ID**.
+3.  Update `BOT_TOKEN` and `CHAT_ID` in `server.py`.
 
 ---
 
 ## 5. How to Run
 
 1.  **Start the Server:**
-    * SSH into your Droplet.
-    * Navigate to your project folder: `cd CS3237-Emogotchi`
-    * Activate the environment: `source venv/bin/activate`
-    * Run the Flask application: `python server.py`
-    * *(Optional: Use `screen -S flask` and then `python server.py` to keep it running after you disconnect).*
+    * SSH into Droplet.
+    * `cd CS3237-Emogotchi`
+    * `source venv/bin/activate`
+    * `python server.py`
 
 2.  **Power On Devices:**
-    * Power on your Main ESP32.
-    * Open the Arduino Serial Monitor (Baud: 115200) to watch its debug logs.
+    * Power on ESP32s. Check Serial Monitor (115200 baud) for connection status.
 
 3.  **View the Web UI:**
-    * Open a web browser on your computer or phone.
-    * Go to your server's public address:
-        **`http://[your_droplet_ip]:5000`**
-    * You should see the dashboard populate with live data from your ESP32.
+    * Go to **`http://[your_droplet_ip]:5000`**
+    * **New:** Click the **"Stress / Advice"** card to view the AI-generated wellness tip in a popup modal.
+    * **New:** Use the **24h / 7 Days** buttons on the chart to toggle history views.
