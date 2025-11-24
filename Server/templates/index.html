@@ -16,15 +16,17 @@
     <style>
         :root {
             --bg-color: #1a1b26;
-            --card-color: #24283b;
+            --card-bg: rgba(36, 40, 59, 0.7);
+            /* Glass effect */
             --text-color: #c0caf5;
             --text-dim: #a9b1d6;
             --accent-green: #73daca;
             --accent-blue: #7aa2f7;
             --accent-orange: #ff9e64;
+            --accent-red: #f7768e;
             --accent-purple: #9d7cd8;
             --border-color: #414868;
-            --shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            --shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
         }
 
         * {
@@ -38,6 +40,18 @@
             background-color: var(--bg-color);
             color: var(--text-color);
             padding: 20px;
+            /* Smooth background transition for ambient mood */
+            transition: background-color 1.5s ease;
+            min-height: 100vh;
+        }
+
+        /* --- Mood Background Classes --- */
+        body.mood-stressed {
+            background-color: #241b1b;
+        }
+
+        body.mood-happy {
+            background-color: #1a2624;
         }
 
         .container {
@@ -45,79 +59,344 @@
             margin: 0 auto;
         }
 
+        /* Header & Controls */
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            border: 1px solid var(--border-color);
+        }
+
+        .status-dot {
+            height: 10px;
+            width: 10px;
+            background-color: #555;
+            border-radius: 50%;
+            margin-right: 8px;
+            transition: background-color 0.3s;
+        }
+
+        .status-dot.online {
+            background-color: var(--accent-green);
+            box-shadow: 0 0 8px var(--accent-green);
+        }
+
+        .status-dot.offline {
+            background-color: var(--accent-red);
+        }
+
         .info-button {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            padding: 10px 18px;
-            background-color: #0c82ffbd;
-            color: white;
+            padding: 8px 16px;
+            background-color: var(--accent-blue);
+            color: #1a1b26;
             text-decoration: none;
-            border-radius: 5px;
-            font-family: sans-serif;
-            font-size: 16px;
-            border: none;
-            cursor: pointer;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: transform 0.2s;
         }
 
         .info-button:hover {
-            background-color: #0057b3bd;
+            transform: scale(1.05);
         }
 
-        h1 {
-            font-weight: 700;
-            margin-bottom: 10px;
-        }
-
-        h2 {
-            font-weight: 600;
-            color: var(--text-dim);
-            margin-bottom: 20px;
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 10px;
-        }
-
-        #device-header {
-            font-size: 0.9em;
-            color: var(--text-dim);
-            margin-bottom: 20px;
-        }
-
-        #device-name {
-            font-weight: 600;
-            color: var(--accent-blue);
-        }
-
-        /* --- GRID SYSTEM --- */
+        /* --- GRID LAYOUT --- */
         .latest-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 15px;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 20px;
             margin-bottom: 30px;
         }
 
         .metric-card {
-            background-color: var(--card-color);
-            border-radius: 12px;
+            background-color: var(--card-bg);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
             padding: 20px;
             box-shadow: var(--shadow);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
             border: 1px solid var(--border-color);
+            transition: transform 0.3s ease, border-color 0.3s;
             position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
         }
 
         .metric-card:hover {
             transform: translateY(-5px);
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
         }
 
+        /* --- EMO-AVATAR (The Face) --- */
+        #avatar-card {
+            grid-column: span 2;
+            /* Takes up 2 slots */
+            grid-row: span 2;
+            /* Takes up 2 rows */
+            background: linear-gradient(145deg, #2a2e42, #1f2233);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .avatar-face {
+            width: 120px;
+            height: 120px;
+            background: #1a1b26;
+            border-radius: 20px;
+            position: relative;
+            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8);
+            border: 2px solid var(--border-color);
+            margin-bottom: 15px;
+            transition: border-color 0.5s;
+        }
+
+        .eye {
+            position: absolute;
+            top: 35%;
+            width: 20px;
+            height: 20px;
+            background: var(--accent-blue);
+            border-radius: 50%;
+            transition: all 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+        }
+
+        .eye.left {
+            left: 25%;
+        }
+
+        .eye.right {
+            right: 25%;
+        }
+
+        .mouth {
+            position: absolute;
+            bottom: 25%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 40px;
+            height: 10px;
+            border-radius: 10px;
+            background: var(--accent-blue);
+            transition: all 0.5s;
+        }
+
+        /* Avatar States */
+        .avatar-face.state-happy {
+            border-color: var(--accent-green);
+        }
+
+        .avatar-face.state-happy .eye {
+            background: var(--accent-green);
+            height: 10px;
+            width: 25px;
+            border-radius: 10px;
+        }
+
+        /* Squinting happy eyes */
+        .avatar-face.state-happy .mouth {
+            background: transparent;
+            border-bottom: 4px solid var(--accent-green);
+            height: 20px;
+            border-radius: 50%;
+        }
+
+        /* Smile */
+
+        .avatar-face.state-sad {
+            border-color: var(--accent-blue);
+        }
+
+        .avatar-face.state-sad .eye {
+            background: var(--accent-blue);
+            top: 40%;
+        }
+
+        .avatar-face.state-sad .mouth {
+            background: transparent;
+            border-top: 4px solid var(--accent-blue);
+            height: 15px;
+            border-radius: 50%;
+            bottom: 20%;
+        }
+
+        /* Frown */
+
+        .avatar-face.state-stressed {
+            border-color: var(--accent-red);
+            animation: shake 0.5s infinite;
+        }
+
+        .avatar-face.state-stressed .eye {
+            background: var(--accent-red);
+            height: 5px;
+            width: 25px;
+        }
+
+        /* Narrow eyes */
+        .avatar-face.state-stressed .mouth {
+            width: 20px;
+            height: 10px;
+            background: var(--accent-red);
+            border-radius: 50%;
+        }
+
+        /* Open mouth gasp */
+
+        @keyframes shake {
+            0% {
+                transform: translate(1px, 1px) rotate(0deg);
+            }
+
+            10% {
+                transform: translate(-1px, -2px) rotate(-1deg);
+            }
+
+            20% {
+                transform: translate(-3px, 0px) rotate(1deg);
+            }
+
+            30% {
+                transform: translate(3px, 2px) rotate(0deg);
+            }
+
+            40% {
+                transform: translate(1px, -1px) rotate(1deg);
+            }
+
+            50% {
+                transform: translate(-1px, 2px) rotate(-1deg);
+            }
+
+            60% {
+                transform: translate(-3px, 1px) rotate(0deg);
+            }
+
+            70% {
+                transform: translate(3px, 1px) rotate(-1deg);
+            }
+
+            80% {
+                transform: translate(-1px, -1px) rotate(1deg);
+            }
+
+            90% {
+                transform: translate(1px, 2px) rotate(0deg);
+            }
+
+            100% {
+                transform: translate(1px, -2px) rotate(-1deg);
+            }
+        }
+
+        /* --- CIRCULAR GAUGES --- */
+        .gauge-wrapper {
+            position: relative;
+            width: 100px;
+            height: 100px;
+            margin-top: 10px;
+        }
+
+        .gauge-svg {
+            transform: rotate(-90deg);
+            width: 100%;
+            height: 100%;
+        }
+
+        .gauge-bg {
+            fill: none;
+            stroke: #2e344e;
+            stroke-width: 8;
+        }
+
+        .gauge-progress {
+            fill: none;
+            stroke: var(--accent-blue);
+            stroke-width: 8;
+            stroke-dasharray: 251;
+            stroke-dashoffset: 251;
+            /* 2*PI*R (R=40) approx 251 */
+            transition: stroke-dashoffset 1s ease-out, stroke 0.5s;
+            stroke-linecap: round;
+        }
+
+        .gauge-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.2em;
+            font-weight: 700;
+        }
+
+        .gauge-label {
+            font-size: 0.8em;
+            color: var(--text-dim);
+            margin-top: 5px;
+        }
+
+        /* --- CHART & INTERACTIVE CARDS --- */
+        .chart-card {
+            grid-column: 1 / -1;
+            background-color: var(--card-bg);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 20px;
+            border: 1px solid var(--border-color);
+            min-height: 480px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chart-header-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+        }
+
+        .chart-controls button {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-dim);
+            padding: 5px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .chart-controls button.active {
+            background: var(--accent-blue);
+            color: #1a1b26;
+            border-color: var(--accent-blue);
+        }
+
+        .chart-wrapper {
+            position: relative;
+            flex-grow: 1;
+            width: 100%;
+            height: 350px;
+        }
+
+        /* Interactive Advice Card */
         .metric-card.interactive {
             cursor: pointer;
             border: 1px solid var(--accent-purple);
+            transition: 0.3s;
         }
 
         .metric-card.interactive:hover {
-            background-color: #2e344e;
+            background-color: rgba(157, 124, 216, 0.1);
+            box-shadow: 0 0 15px rgba(157, 124, 216, 0.3);
         }
 
         .tap-hint {
@@ -129,103 +408,17 @@
             color: #1a1b26;
             padding: 2px 6px;
             border-radius: 4px;
-            font-weight: bold;
-            opacity: 0.8;
         }
 
-        .metric-header {
-            display: flex;
-            align-items: center;
-            font-size: 0.9em;
-            color: var(--text-dim);
-            font-weight: 600;
-        }
-
-        .metric-header i {
-            font-size: 1.1em;
-            margin-right: 10px;
-            width: 20px;
-            text-align: center;
-        }
-
-        .metric-value {
-            font-size: 2.2em;
-            font-weight: 700;
-            margin-top: 10px;
-            color: var(--text-color);
-        }
-
-        /* --- CHART CARD STYLES --- */
-        .chart-card {
-            grid-column: 1 / -1;
-            background-color: var(--card-color);
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: var(--shadow);
-            border: 1px solid var(--border-color);
-            margin-bottom: 10px;
-            /* Remove fixed height to allow content to dictate, but keep min-height */
-            min-height: 480px;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .chart-header-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-            flex-wrap: wrap;
-        }
-
-        .chart-controls {
-            display: flex;
-            gap: 10px;
-        }
-
-        .time-btn {
-            background-color: transparent;
-            border: 1px solid var(--border-color);
-            color: var(--text-dim);
-            padding: 5px 12px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.85em;
-            transition: all 0.2s;
-        }
-
-        .time-btn:hover {
-            background-color: #2e344e;
-            color: var(--text-color);
-        }
-
-        .time-btn.active {
-            background-color: var(--accent-blue);
-            color: #1a1b26;
-            border-color: var(--accent-blue);
-            font-weight: 600;
-        }
-
-        /* The specific wrapper to fix canvas overflow */
-        .chart-wrapper {
-            position: relative;
-            flex-grow: 1;
-            /* Take up remaining space */
-            width: 100%;
-            height: 350px;
-            /* Explicit height for the canvas container */
-            min-height: 300px;
-        }
-
-        /* --- MODAL STYLES --- */
+        /* --- MODAL --- */
         .modal-overlay {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.6);
-            backdrop-filter: blur(8px);
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(5px);
             z-index: 1000;
             display: flex;
             justify-content: center;
@@ -241,13 +434,12 @@
         }
 
         .modal-content {
-            background-color: var(--card-color);
+            background: #24283b;
             width: 90%;
             max-width: 500px;
             padding: 30px;
             border-radius: 16px;
             border: 1px solid var(--accent-green);
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
             text-align: center;
             transform: scale(0.9);
             transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -257,212 +449,23 @@
             transform: scale(1);
         }
 
-        .modal-icon {
-            font-size: 3em;
-            color: var(--accent-green);
-            margin-bottom: 15px;
-        }
-
-        .modal-title {
-            font-size: 1.5em;
-            color: var(--text-color);
-            margin-bottom: 15px;
-            font-weight: 600;
-        }
-
-        .modal-text {
-            font-size: 1.1em;
-            color: var(--text-dim);
-            margin-bottom: 25px;
-            line-height: 1.6;
-        }
-
         .close-btn {
-            background-color: var(--accent-green);
-            color: #1a1b26;
+            background: var(--accent-green);
             border: none;
             padding: 10px 25px;
             border-radius: 8px;
-            font-weight: 600;
+            font-weight: bold;
             cursor: pointer;
-            font-size: 1em;
-            transition: background 0.2s;
+            margin-top: 20px;
         }
 
-        .close-btn:hover {
-            background-color: #5acbbd;
-        }
-
-        /* --- Responsive Grid --- */
-        @media (min-width: 900px) {
-            .latest-grid {
-                grid-template-columns: repeat(4, 1fr);
-            }
-
-            .chart-card {
-                grid-column: 1 / span 2;
-                grid-row: 1 / span 2;
-            }
-
-            .metric-card#stress-card {
-                grid-column: 3;
-                grid-row: 1;
-            }
-
-            .metric-card#happiness-card {
-                grid-column: 4;
-                grid-row: 1;
-            }
-
-            .metric-card#bpm-card {
-                grid-column: 3;
-                grid-row: 2;
-            }
-
-            .metric-card#motion-card {
-                grid-column: 4;
-                grid-row: 2;
-            }
-
-            .metric-card#temp-card {
-                grid-column: 1;
-                grid-row: 3;
-            }
-
-            .metric-card#hum-card {
-                grid-column: 2;
-                grid-row: 3;
-            }
-
-            .metric-card#noise-card {
-                grid-column: 3;
-                grid-row: 3;
-            }
-
-            .metric-card#light-card {
-                grid-column: 4;
-                grid-row: 3;
-            }
-        }
-
-        @media (min-width: 1200px) {
-            .latest-grid {
-                grid-template-columns: repeat(5, 1fr);
-            }
-
-            .chart-card {
-                grid-column: 1 / span 3;
-                grid-row: 1 / span 2;
-            }
-
-            .metric-card#stress-card {
-                grid-column: 4;
-                grid-row: 1;
-            }
-
-            .metric-card#happiness-card {
-                grid-column: 5;
-                grid-row: 1;
-            }
-
-            .metric-card#bpm-card {
-                grid-column: 4;
-                grid-row: 2;
-            }
-
-            .metric-card#motion-card {
-                grid-column: 5;
-                grid-row: 2;
-            }
-
-            .metric-card#temp-card {
-                grid-column: 1;
-                grid-row: 3;
-            }
-
-            .metric-card#hum-card {
-                grid-column: 2;
-                grid-row: 3;
-            }
-
-            .metric-card#noise-card {
-                grid-column: 3;
-                grid-row: 3;
-            }
-
-            .metric-card#light-card {
-                grid-column: 4;
-                grid-row: 3;
-            }
-        }
-
-        /* Logic specific styles */
-        .metric-card.stressed {
-            background-color: #4a2f2f;
-            border-color: var(--accent-orange);
-        }
-
-        .metric-card.stressed .metric-value {
-            color: var(--accent-orange);
-        }
-
-        .metric-card.stressed .metric-header i {
-            color: var(--accent-orange);
-        }
-
-        .metric-card.in-motion {
-            background-color: #2f3b5c;
-            border-color: var(--accent-blue);
-        }
-
-        .metric-card.in-motion .metric-value {
-            color: var(--accent-blue);
-        }
-
-        .metric-card.in-motion .metric-header i {
-            color: var(--accent-blue);
-        }
-
-        /* FontAwesome colors */
-        .fa-heartbeat {
-            color: #f7768e;
-        }
-
-        .fa-thermometer-half {
-            color: #ff9e64;
-        }
-
-        .fa-tint {
-            color: #7aa2f7;
-        }
-
-        .fa-volume-up {
-            color: #bb9af7;
-        }
-
-        .fa-sun {
-            color: #e0af68;
-        }
-
-        .fa-walking {
-            color: #73daca;
-        }
-
-        .fa-brain {
-            color: #9d7cd8;
-        }
-
-        .fa-smile {
-            color: var(--accent-green);
-        }
-
+        /* --- TABLE --- */
         .history-card {
-            background-color: var(--card-color);
-            border-radius: 12px;
+            background: var(--card-bg);
+            border-radius: 16px;
             padding: 20px;
-            box-shadow: var(--shadow);
-            border: 1px solid var(--border-color);
             overflow-x: auto;
+            border: 1px solid var(--border-color);
         }
 
         table {
@@ -479,13 +482,39 @@
         }
 
         th {
-            background-color: #2e344e;
-            font-weight: 600;
-            color: var(--text-dim);
+            background: rgba(0, 0, 0, 0.2);
+            color: var(--accent-blue);
         }
 
-        tbody tr:hover {
-            background-color: #2e344e;
+        /* Responsive */
+        @media (min-width: 900px) {
+            .latest-grid {
+                grid-template-columns: repeat(4, 1fr);
+            }
+
+            .chart-card {
+                grid-column: 1 / span 2;
+                grid-row: 1 / span 2;
+            }
+
+            #avatar-card {
+                grid-column: 3 / span 2;
+                grid-row: 1 / span 2;
+            }
+        }
+
+        @media (min-width: 1200px) {
+            .latest-grid {
+                grid-template-columns: repeat(5, 1fr);
+            }
+
+            .chart-card {
+                grid-column: 1 / span 3;
+            }
+
+            #avatar-card {
+                grid-column: 4 / span 2;
+            }
         }
     </style>
 </head>
@@ -493,83 +522,128 @@
 <body>
 
     <div class="container">
-        <div id="device-header">
-            User: <span id="device-name">--</span>
-        </div>
-        <h1>Emogotchi Dashboard</h1>
-        <span id="latest-timestamp" style="color: var(--text-dim); font-size: 0.9em;">Loading...</span>
-        <a href="/info" class="info-button">Info</a>
 
-        <h2 style="margin-top: 10px;">Latest Readings</h2>
+        <div class="header-row">
+            <div>
+                <h1 style="margin-bottom: 5px;">Emogotchi <span
+                        style="font-weight:300; font-size:0.6em; color:var(--text-dim);">Dashboard V2.0</span></h1>
+                <div class="status-badge">
+                    <div id="connection-dot" class="status-dot offline"></div>
+                    <span id="device-status-text">Connecting...</span>
+                    <span style="margin: 0 8px; color: #555;">|</span>
+                    <i class="fas fa-user-circle" style="margin-right:5px;"></i> <span id="device-name">--</span>
+                </div>
+            </div>
+            <a href="/info" class="info-button"><i class="fas fa-info-circle"></i> System Info</a>
+        </div>
+
         <div class="latest-grid">
 
-            <!-- CHART CARD -->
+            <!-- 1. CHART CARD -->
             <div class="chart-card">
                 <div class="chart-header-row">
                     <h3 style="color: var(--text-dim); margin: 0;">Happiness Trend</h3>
                     <div class="chart-controls">
-                        <!-- Buttons to switch modes -->
                         <button class="time-btn active" id="btn-24h" onclick="switchChartMode('24h')">24h</button>
                         <button class="time-btn" id="btn-7d" onclick="switchChartMode('7d')">7 Days</button>
                     </div>
                 </div>
-
-                <!-- Wrapper to fix X-axis overflow -->
                 <div class="chart-wrapper">
                     <canvas id="happinessChart"></canvas>
                 </div>
             </div>
 
-            <!-- INTERACTIVE STRESS CARD -->
+            <!-- 2. AVATAR CARD (The Digital Pet) -->
+            <div class="metric-card" id="avatar-card">
+                <div class="avatar-face" id="avatar-face">
+                    <div class="eye left"></div>
+                    <div class="eye right"></div>
+                    <div class="mouth"></div>
+                </div>
+                <div style="text-align: center;">
+                    <div style="font-size: 0.9em; color: var(--text-dim);">Current Emotion</div>
+                    <div id="latest-prediction" style="font-size: 2em; font-weight: 700;">Loading...</div>
+                    <div id="latest-happiness-score" style="font-size: 1.2em; color: var(--accent-green);">--/100</div>
+                </div>
+            </div>
+
+            <!-- 3. INTERACTIVE ADVICE CARD -->
             <div class="metric-card interactive" id="stress-card" onclick="showAdvice()">
-                <div class="tap-hint">View Tip</div>
-                <div class="metric-header"><i class="fas fa-brain"></i><span>Stress / Advice</span></div>
-                <div class="metric-value" id="latest-prediction">N/A</div>
+                <div class="tap-hint">Tap for Tip</div>
+                <i class="fas fa-brain" style="font-size: 1.5em; color: var(--accent-purple); margin-bottom: 10px;"></i>
+                <div style="font-size: 1.2em; font-weight: 700;">AI Coach</div>
+                <div style="font-size: 0.8em; color: var(--text-dim); text-align: center; margin-top:5px;">Get
+                    personalized wellness advice</div>
             </div>
 
-            <div class="metric-card" id="happiness-card">
-                <div class="metric-header"><i class="fas fa-smile"></i><span>Happiness</span></div>
-                <div class="metric-value" id="latest-happiness-score">--</div>
-            </div>
-            <div class="metric-card" id="bpm-card">
-                <div class="metric-header"><i class="fas fa-heartbeat"></i><span>BPM</span></div>
-                <div class="metric-value" id="latest-bpm">--</div>
-            </div>
-            <div class="metric-card" id="motion-card">
-                <div class="metric-header"><i class="fas fa-walking"></i><span>In Motion</span></div>
-                <div class="metric-value" id="latest-motion">--</div>
+            <!-- 4. CIRCULAR GAUGES -->
+            <!-- BPM -->
+            <div class="metric-card">
+                <i class="fas fa-heartbeat" style="color: var(--accent-red);"></i>
+                <div class="gauge-wrapper">
+                    <svg class="gauge-svg" viewBox="0 0 100 100">
+                        <circle class="gauge-bg" cx="50" cy="50" r="40"></circle>
+                        <circle class="gauge-progress" id="gauge-bpm" cx="50" cy="50" r="40"
+                            style="stroke: var(--accent-red);"></circle>
+                    </svg>
+                    <div class="gauge-text" id="val-bpm">--</div>
+                </div>
+                <div class="gauge-label">Heart Rate (BPM)</div>
             </div>
 
-            <div class="metric-card" id="temp-card">
-                <div class="metric-header"><i class="fas fa-thermometer-half"></i><span>Temp</span></div>
-                <div class="metric-value" id="latest-temp">--</div>
+            <!-- Humidity -->
+            <div class="metric-card">
+                <i class="fas fa-tint" style="color: var(--accent-blue);"></i>
+                <div class="gauge-wrapper">
+                    <svg class="gauge-svg" viewBox="0 0 100 100">
+                        <circle class="gauge-bg" cx="50" cy="50" r="40"></circle>
+                        <circle class="gauge-progress" id="gauge-hum" cx="50" cy="50" r="40"
+                            style="stroke: var(--accent-blue);"></circle>
+                    </svg>
+                    <div class="gauge-text"><span id="val-hum">--</span>%</div>
+                </div>
+                <div class="gauge-label">Humidity</div>
             </div>
-            <div class="metric-card" id="hum-card">
-                <div class="metric-header"><i class="fas fa-tint"></i><span>Humidity</span></div>
-                <div class="metric-value" id="latest-hum">--</div>
+
+            <!-- STANDARD CARDS (No Gauge) -->
+            <div class="metric-card">
+                <i class="fas fa-thermometer-half"
+                    style="color: var(--accent-orange); font-size:1.5em; margin-bottom:10px;"></i>
+                <div class="metric-value" id="val-temp">--</div>
+                <div class="gauge-label">Temperature</div>
             </div>
-            <div class="metric-card" id="noise-card">
-                <div class="metric-header"><i class="fas fa-volume-up"></i><span>Noise</span></div>
-                <div class="metric-value" id="latest-noise">--</div>
+
+            <div class="metric-card">
+                <i class="fas fa-volume-up" style="color: #bb9af7; font-size:1.5em; margin-bottom:10px;"></i>
+                <div class="metric-value" id="val-noise">--</div>
+                <div class="gauge-label">Noise Level</div>
             </div>
-            <div class="metric-card" id="light-card">
-                <div class="metric-header"><i class="fas fa-sun"></i><span>Light (LDR)</span></div>
-                <div class="metric-value" id="latest-ldr">--</div>
+
+            <div class="metric-card">
+                <i class="fas fa-sun" style="color: #e0af68; font-size:1.5em; margin-bottom:10px;"></i>
+                <div class="metric-value" id="val-ldr">--</div>
+                <div class="gauge-label">Light (LDR)</div>
             </div>
+
+            <div class="metric-card">
+                <i class="fas fa-walking" style="color: var(--accent-green); font-size:1.5em; margin-bottom:10px;"></i>
+                <div class="metric-value" id="val-motion">--</div>
+                <div class="gauge-label">Motion</div>
+            </div>
+
         </div>
 
         <div class="history-card">
-            <h2>Recent History (Last <span id="history-count">10</span> Readings)</h2>
+            <h2 style="border:none;">Recent History</h2>
             <table id="history-table">
                 <thead>
                     <tr>
                         <th>Time</th>
                         <th>BPM</th>
-                        <th>Temp (°C)</th>
-                        <th>Humidity (%)</th>
+                        <th>Temp</th>
+                        <th>Hum</th>
                         <th>Noise</th>
                         <th>LDR</th>
-                        <th>Motion</th>
                         <th>Score</th>
                     </tr>
                 </thead>
@@ -581,136 +655,131 @@
     <!-- AI ADVICE MODAL -->
     <div class="modal-overlay" id="advice-modal">
         <div class="modal-content">
-            <div class="modal-icon"><i class="fas fa-robot"></i></div>
-            <div class="modal-title">AI Wellness Coach</div>
-            <p class="modal-text" id="ai-suggestion-text">Waiting for AI analysis...</p>
+            <i class="fas fa-robot" style="font-size: 3em; color: var(--accent-green); margin-bottom: 15px;"></i>
+            <div style="font-size: 1.5em; font-weight: 600; margin-bottom: 10px;">AI Wellness Coach</div>
+            <p id="ai-suggestion-text" style="color: var(--text-dim); line-height: 1.6;">Waiting for AI...</p>
             <button class="close-btn" onclick="closeAdvice()">Close</button>
         </div>
     </div>
 
     <script>
-        // --- Global State for Chart Mode ---
+        // --- CONFIG ---
+        const CHART_COLORS = {
+            line: '#73daca',
+            fillStart: 'rgba(115, 218, 202, 0.5)',
+            fillEnd: 'rgba(115, 218, 202, 0.05)'
+        };
+
+        // --- GLOBAL STATE ---
         let currentChartPeriod = '24h';
         let happinessChart = null;
-        let latestSuggestion = "Gathering data for analysis...";
+        let latestSuggestion = "Gathering data...";
+        let lastUpdateTimestamp = 0;
 
-        // --- DOM Elements ---
-        const elements = {
-            timestamp: document.getElementById('latest-timestamp'),
+        // --- DOM CACHE ---
+        const dom = {
+            statusDot: document.getElementById('connection-dot'),
+            statusText: document.getElementById('device-status-text'),
             deviceName: document.getElementById('device-name'),
-            bpm: document.getElementById('latest-bpm'),
-            temp: document.getElementById('latest-temp'),
-            hum: document.getElementById('latest-hum'),
-            noise: document.getElementById('latest-noise'),
-            ldr: document.getElementById('latest-ldr'),
-            motion: document.getElementById('latest-motion'),
+
+            // Avatar
+            avatarFace: document.getElementById('avatar-face'),
             prediction: document.getElementById('latest-prediction'),
-            happinessScore: document.getElementById('latest-happiness-score'),
-            historyCount: document.getElementById('history-count'),
-            tableBody: document.getElementById('history-table').querySelector('tbody'),
-            stressCard: document.getElementById('stress-card'),
-            motionCard: document.getElementById('motion-card'),
-            adviceModal: document.getElementById('advice-modal'),
-            suggestionText: document.getElementById('ai-suggestion-text'),
+            score: document.getElementById('latest-happiness-score'),
+
+            // Values
+            valTemp: document.getElementById('val-temp'),
+            valNoise: document.getElementById('val-noise'),
+            valLdr: document.getElementById('val-ldr'),
+            valMotion: document.getElementById('val-motion'),
+            valBpm: document.getElementById('val-bpm'),
+            valHum: document.getElementById('val-hum'),
+
+            // Gauges (SVG circles)
+            gaugeBpm: document.getElementById('gauge-bpm'),
+            gaugeHum: document.getElementById('gauge-hum'),
+
+            // Modal
+            modal: document.getElementById('advice-modal'),
+            modalText: document.getElementById('ai-suggestion-text'),
+
+            // Table
+            tableBody: document.querySelector('#history-table tbody'),
+
+            // Chart Buttons
             btn24h: document.getElementById('btn-24h'),
             btn7d: document.getElementById('btn-7d')
         };
 
-        // --- Modal Functions ---
-        function showAdvice() {
-            elements.suggestionText.innerText = latestSuggestion;
-            elements.adviceModal.classList.add('active');
+        // --- HELPER: Set Circular Gauge ---
+        function setGauge(element, value, max) {
+            // Circle circumference = 2 * PI * 40 ≈ 251
+            const circumference = 251;
+            const percentage = Math.min(Math.max(value / max, 0), 1); // Clamp between 0 and 1
+            const offset = circumference - (percentage * circumference);
+            element.style.strokeDashoffset = offset;
         }
-        function closeAdvice() {
-            elements.adviceModal.classList.remove('active');
-        }
-        elements.adviceModal.addEventListener('click', (e) => {
-            if (e.target === elements.adviceModal) closeAdvice();
-        });
 
-        // --- Chart Functions ---
+        // --- MODAL LOGIC ---
+        function showAdvice() {
+            dom.modalText.innerText = latestSuggestion;
+            dom.modal.classList.add('active');
+        }
+        function closeAdvice() { dom.modal.classList.remove('active'); }
+        dom.modal.addEventListener('click', (e) => { if (e.target === dom.modal) closeAdvice(); });
+
+        // --- CHART LOGIC ---
         function initChart() {
             const ctx = document.getElementById('happinessChart').getContext('2d');
             const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-            gradient.addColorStop(0, 'rgba(115, 218, 202, 0.6)');
-            gradient.addColorStop(1, 'rgba(115, 218, 202, 0.05)');
+            gradient.addColorStop(0, CHART_COLORS.fillStart);
+            gradient.addColorStop(1, CHART_COLORS.fillEnd);
 
             happinessChart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     datasets: [{
-                        label: 'Happiness Score',
+                        label: 'Happiness',
                         data: [],
-                        borderColor: 'rgba(115, 218, 202, 1)',
+                        borderColor: CHART_COLORS.line,
                         backgroundColor: gradient,
                         fill: true,
-                        pointRadius: 2,
+                        pointRadius: 0, // Clean look
+                        pointHoverRadius: 6,
                         tension: 0.4,
+                        borderWidth: 2
                     }]
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: false, // Important for responsive container
+                    maintainAspectRatio: false,
                     scales: {
-                        y: {
-                            beginAtZero: true,
-                            max: 100,
-                            ticks: { color: '#a9b1d6' },
-                            grid: { color: '#414868' }
-                        },
-                        x: {
-                            type: 'time',
-                            time: {
-                                unit: 'hour', // Default
-                                displayFormats: {
-                                    hour: 'HH:mm',
-                                    day: 'MMM d'
-                                }
-                            },
-                            ticks: { color: '#a9b1d6' },
-                            grid: { display: false }
-                        }
+                        y: { beginAtZero: true, max: 100, grid: { color: '#414868' }, ticks: { color: '#a9b1d6' } },
+                        x: { type: 'time', grid: { display: false }, ticks: { color: '#a9b1d6' } }
                     },
-                    plugins: { legend: { display: false } }
+                    plugins: { legend: { display: false } },
+                    interaction: { intersect: false, mode: 'index' },
                 }
             });
         }
 
-        // --- Mode Switcher Logic ---
         function switchChartMode(mode) {
             currentChartPeriod = mode;
-
-            // Toggle Button Classes
             if (mode === '24h') {
-                elements.btn24h.classList.add('active');
-                elements.btn7d.classList.remove('active');
+                dom.btn24h.classList.add('active'); dom.btn7d.classList.remove('active');
             } else {
-                elements.btn24h.classList.remove('active');
-                elements.btn7d.classList.add('active');
+                dom.btn24h.classList.remove('active'); dom.btn7d.classList.add('active');
             }
-
-            // Fetch new data immediately
             updateTrendline();
         }
 
-        // --- Update Trendline ---
         async function updateTrendline() {
             try {
-                // Pass the current period (24h or 7d) to the server
                 const response = await fetch(`/trend_data?period=${currentChartPeriod}`);
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                const trendData = await response.json();
-
+                const data = await response.json();
                 if (happinessChart) {
-                    const chartData = trendData.map(entry => ({
-                        x: new Date(entry.timestamp),
-                        y: entry.happiness_score
-                    }));
+                    happinessChart.data.datasets[0].data = data.map(d => ({ x: d.timestamp, y: d.happiness_score }));
 
-                    // Update Data
-                    happinessChart.data.datasets[0].data = chartData;
-
-                    // Update Axis Formatting based on mode
                     if (currentChartPeriod === '7d') {
                         happinessChart.options.scales.x.time.unit = 'day';
                         happinessChart.options.scales.x.time.tooltipFormat = 'MMM d, HH:mm';
@@ -718,91 +787,104 @@
                         happinessChart.options.scales.x.time.unit = 'hour';
                         happinessChart.options.scales.x.time.tooltipFormat = 'HH:mm';
                     }
-
                     happinessChart.update();
                 }
-            } catch (error) {
-                console.error("Failed to fetch trend data:", error);
-            }
+            } catch (e) { console.error("Chart Error", e); }
         }
 
-        // --- Update Real-time Metrics (every 5s) ---
+        // --- MAIN DATA UPDATE LOOP ---
         async function updateData() {
             try {
                 const response = await fetch('/data');
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
-
-                if (data.suggestion) latestSuggestion = data.suggestion;
                 const latest = data.latest || {};
 
-                let simpleTime = '--:--:--';
-                if (latest.timestamp) {
-                    const d = new Date(latest.timestamp);
-                    simpleTime = d.toLocaleTimeString();
-                }
-                elements.timestamp.textContent = `Last update: ${simpleTime}`;
-                elements.deviceName.textContent = latest.device_name || 'Unknown';
-                elements.bpm.textContent = latest.bpm !== undefined ? latest.bpm.toFixed(1) : '--';
-                elements.temp.textContent = latest.temperature !== undefined ? `${latest.temperature.toFixed(1)}°C` : '--';
-                elements.hum.textContent = latest.humidity !== undefined ? `${latest.humidity.toFixed(0)}%` : '--';
-                elements.noise.textContent = latest.noise !== undefined ? latest.noise.toFixed(1) : '--';
-                elements.ldr.textContent = latest.ldr !== undefined ? latest.ldr.toFixed(0) : '--';
+                // 1. Connection Status (Check if data is stale > 15s)
+                const now = new Date();
+                const dataTime = latest.timestamp ? new Date(latest.timestamp) : new Date(0);
+                const isOnline = (now - dataTime) < 15000; // 15 seconds threshold
 
-                const motionText = latest.in_motion === 1 ? 'Yes' : (latest.in_motion === 0 ? 'No' : '--');
-                elements.motion.textContent = motionText;
-
-                const predictionText = data.prediction || 'N/A';
-                elements.prediction.textContent = predictionText;
-                elements.happinessScore.textContent = data.happiness_score !== undefined ? data.happiness_score.toFixed(1) : '--';
-
-                // Cards styling
-                if (predictionText === 'Sad' || predictionText === 'Stressed') {
-                    elements.stressCard.classList.add('stressed');
+                if (isOnline) {
+                    dom.statusDot.className = 'status-dot online';
+                    dom.statusText.innerText = `Online (${dataTime.toLocaleTimeString()})`;
                 } else {
-                    elements.stressCard.classList.remove('stressed');
-                }
-                if (latest.in_motion === 1) {
-                    elements.motionCard.classList.add('in-motion');
-                } else {
-                    elements.motionCard.classList.remove('in-motion');
+                    dom.statusDot.className = 'status-dot offline';
+                    dom.statusText.innerText = "Offline / No Data";
                 }
 
-                // Table Update
+                dom.deviceName.innerText = latest.device_name || 'ESP32';
+                if (data.suggestion) latestSuggestion = data.suggestion;
+
+                // 2. Avatar & Emotion
+                const prediction = data.prediction || "Normal";
+                dom.prediction.innerText = prediction;
+                dom.score.innerText = `${(data.happiness_score || 0).toFixed(1)}/100`;
+
+                // Reset Avatar classes
+                dom.avatarFace.className = 'avatar-face';
+                document.body.className = ''; // Reset background mood
+
+                if (prediction === 'Happy') {
+                    dom.avatarFace.classList.add('state-happy');
+                    document.body.classList.add('mood-happy');
+                } else if (prediction === 'Sad' || prediction === 'Stressed') {
+                    dom.avatarFace.classList.add('state-stressed'); // Use stressed anim for sad too
+                    document.body.classList.add('mood-stressed');
+                } else {
+                    // Normal state (default CSS)
+                    dom.avatarFace.classList.add('state-normal');
+                }
+
+                // 3. Update Numeric Values
+                const bpm = latest.bpm || 0;
+                const hum = latest.humidity || 0;
+
+                dom.valTemp.innerText = (latest.temperature || 0).toFixed(1) + " °C";
+                dom.valNoise.innerText = (latest.noise || 0).toFixed(1);
+                dom.valLdr.innerText = (latest.ldr || 0).toFixed(0);
+                dom.valMotion.innerText = latest.in_motion ? "Yes" : "No";
+
+                dom.valBpm.innerText = bpm.toFixed(0);
+                dom.valHum.innerText = hum.toFixed(0);
+
+                // 4. Update Gauges
+                setGauge(dom.gaugeBpm, bpm, 180); // Max BPM 180
+                setGauge(dom.gaugeHum, hum, 100); // Max Hum 100
+
+                // 5. Update Table
                 const history = data.history || [];
-                elements.tableBody.innerHTML = '';
-                elements.historyCount.textContent = history.length;
+                dom.tableBody.innerHTML = '';
                 history.reverse().forEach(entry => {
-                    const row = elements.tableBody.insertRow();
-                    let entryTime = '--:--:--';
-                    if (entry.timestamp) {
-                        const d = new Date(entry.timestamp);
-                        entryTime = d.toLocaleTimeString();
-                    }
-                    row.insertCell().textContent = entryTime;
-                    row.insertCell().textContent = entry.bpm !== undefined ? entry.bpm.toFixed(1) : '--';
-                    row.insertCell().textContent = entry.temperature !== undefined ? entry.temperature.toFixed(1) : '--';
-                    row.insertCell().textContent = entry.humidity !== undefined ? entry.humidity.toFixed(0) : '--';
-                    row.insertCell().textContent = entry.noise !== undefined ? entry.noise.toFixed(1) : '--';
-                    row.insertCell().textContent = entry.ldr !== undefined ? entry.ldr.toFixed(0) : '--';
-                    row.insertCell().textContent = entry.in_motion === 1 ? 'Yes' : 'No';
-                    row.insertCell().textContent = (entry.happiness_score !== undefined ? entry.happiness_score.toFixed(1) : '--');
+                    const row = dom.tableBody.insertRow();
+                    const time = entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--';
+                    row.innerHTML = `
+                        <td>${time}</td>
+                        <td>${(entry.bpm || 0).toFixed(0)}</td>
+                        <td>${(entry.temperature || 0).toFixed(1)}</td>
+                        <td>${(entry.humidity || 0).toFixed(0)}</td>
+                        <td>${(entry.noise || 0).toFixed(0)}</td>
+                        <td>${(entry.ldr || 0).toFixed(0)}</td>
+                        <td>${(entry.happiness_score || 0).toFixed(1)}</td>
+                    `;
                 });
 
-            } catch (error) {
-                console.error("Failed to fetch sensor data:", error);
-                elements.timestamp.textContent = "Error fetching data.";
+            } catch (e) {
+                console.error("Data fetch error", e);
+                dom.statusDot.className = 'status-dot offline';
+                dom.statusText.innerText = "Server Error";
             }
         }
 
-        document.addEventListener('DOMContentLoaded', (event) => {
+        // --- INIT ---
+        window.addEventListener('DOMContentLoaded', () => {
             initChart();
             updateData();
-            updateTrendline(); // Default is 24h
+            updateTrendline();
         });
 
-        setInterval(updateData, 5000);
-        setInterval(() => updateTrendline(), 60000); 
+        setInterval(updateData, 2000); // Faster updates for smoother feel
+        setInterval(updateTrendline, 60000);
+
     </script>
 </body>
 
