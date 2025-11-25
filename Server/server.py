@@ -13,9 +13,11 @@ from tensorflow.keras.models import load_model
 from datetime import datetime, timedelta, timezone
 import requests
 import google.generativeai as genai  # Import Google's library
+from dotenv import load_dotenv
 # --- AI Configuration ---
 # Replace with your actual key
-GOOGLE_API_KEY = "Hidden"
+load_dotenv()
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 genai.configure(api_key=GOOGLE_API_KEY)
 ai_model = genai.GenerativeModel(
     'gemini-2.0-flash')  # Use the 'gemini-pro' model
@@ -192,7 +194,7 @@ def on_message(client, userdata, msg):
                 else:
                     print(f"Score is {score}, but in notification cooldown.")
             else:
-                latest_suggestion = "Keep up the good work!"
+                latest_suggestion = "Keep up the good mood!"
 
             # Update global state
             latest_happiness_score = score
