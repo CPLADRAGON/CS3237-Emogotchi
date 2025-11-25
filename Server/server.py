@@ -58,8 +58,8 @@ TREND_CSV_HEADERS = ['timestamp', 'happiness_score']
 csv_lock = threading.Lock()
 
 # --- [Telegram Notification Setup ] ---
-BOT_TOKEN = "7393315205:AAEos38jymwEA4lhCUZQBWfZY8U5ZxdwlqY"
-CHAT_ID = "-5025276308"  # Must be a string, e.g., "-100123456789"
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 NOTIFICATION_COOLDOWN_SEC = 10
 g_last_notification_time = 0.0  # Global variable to track cooldown
 
