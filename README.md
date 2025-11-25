@@ -13,13 +13,13 @@ Students often spend long hours studying and can become unaware of accumulating 
 
 This data is published via MQTT to a cloud server, which uses a time-series **LSTM (Long Short-Term Memory) machine learning model** to predict a "happiness score" (0-100).
 
-**New: AI Wellness Coach**  
-The system now integrates **Google Gemini 2.0 Flash AI**. It analyzes the raw sensor data and the predicted happiness score to generate context-aware, personalized wellness tips (e.g., "High noise detected, try finding a quieter spot" or "Heart rate elevated, take a deep breath").
+**New: AI Wellness Coach & Dashboard V2.0**  
+The system now integrates **Google Gemini 2.0 Flash AI**. It analyzes sensor data to generate context-aware wellness tips. The web interface has been completely overhauled into a **"Digital Twin" Dashboard**, featuring an animated **Emo-Avatar** that visually mimics the user's emotion (smiling, neutral, or stressed) in real-time, along with live connection monitoring and animated gauges.
 
 This creates a **closed-loop feedback system**:
 1.  **Emogotchi Device:** Displays current emotion ("Happy", "Normal", "Sad") on OLED and RGB LED.
-2.  **Smart Home Hub:** Triggers physical actuators (servos, lights) and "Relax Mode" routines based on the user's state.
-3.  **Web Dashboard:** Displays live data, 24-hour/7-day trends, and offers an **interactive AI advice modal** to coach the user back to a balanced state.
+2.  **Smart Home Hub:** Triggers physical actuators (servos, lights) and "Relax Mode" routines.
+3.  **Web Dashboard:** Serves as the central emotional monitor with live visual feedback and AI coaching.
 4.  **Telegram:** Sends critical alerts if the score drops below a threshold.
 
 ## 2. System Architecture
@@ -31,8 +31,8 @@ The project is built on a high-performance, real-time **Publish/Subscribe (Pub/S
     * Runs **FreeRTOS** to manage 10 concurrent tasks (sensors, display, network) across both CPU cores.
     * **Core 1 (Sensors):** Gathers data from the MPU6050 (interrupt-driven), DHT11, Pulse Sensor, Sound Sensor, and LDR.
     * **Core 0 (Network):** Manages Wi-Fi and MQTT.
-    * **Publishes** a JSON payload of sensor data to the `esp32/sensor_data` topic.
-    * **Subscribes** to the `esp32/prediction` topic to receive real-time commands.
+    * **Publishes** JSON sensor data to `esp32/sensor_data`.
+    * **Subscribes** to `esp32/prediction` to receive real-time commands.
     * Displays the received emotion on its OLED screen and RGB LED.
 
 2.  **Cloud Server (DigitalOcean Droplet):**
@@ -40,23 +40,23 @@ The project is built on a high-performance, real-time **Publish/Subscribe (Pub/S
     * Runs the **Mosquitto MQTT Broker** as the central message hub.
     * Runs a **Python Flask Server** (`server.py`):
         * **Subscribes** to `esp32/sensor_data`.
-        * Collects a sequence of 10 data points.
-        * Feeds the sequence into a trained **Keras/TensorFlow LSTM model** to predict a "happiness score" (0-100).
-        * **Generative AI:** Calls the **Google Gemini API** to generate text-based wellness advice based on specific sensor readings.
-        * **Publishes** the emotion and score back to `esp32/prediction`.
-        * Sends **Telegram alerts** for critical stress levels.
-        * Logs data to `sensor_data.csv` and `happiness_trend.csv`.
-        * **Serves a Web UI:**
-            * Live sensor metrics.
-            * **Interactive Stress Card:** Clicking opens a modal with the AI's latest advice.
-            * **Dynamic Charts:** Users can toggle between 24-Hour and 7-Day history views.
+        * Feeds data into a trained **Keras/TensorFlow LSTM model** to predict happiness (0-100).
+        * **Generative AI:** Calls **Google Gemini 2.0 Flash** to generate wellness advice.
+        * **Publishes** emotion/score back to `esp32/prediction`.
+        * Sends **Telegram alerts** for critical stress.
+        * **Serves Dashboard V2.0:**
+            * **Emo-Avatar:** An animated CSS face that reacts to the predicted emotion.
+            * **Live Pulse:** "Heartbeat" monitor that detects if the device goes offline.
+            * **Interactive Stress Card:** Popup modal with AI-generated advice.
+            * **Visuals:** Circular animated gauges, glassmorphism UI, and ambient background color shifts.
+            * **Trends:** Toggle between 24-Hour and 7-Day history charts.
 
 3.  **Smart Home Hub (ASR-PRO & Second ESP32):**
     * **Voice & Emotion Actuator Controller**
     * **Subscribes** to the `esp32/prediction` topic.
-    * **ASR-PRO Module:** Serves as the primary **offline voice recognition engine** and central actuator controller.
-    * **Sentiment Gateway (Second ESP32):** Acts as a bridge between the cloud and the offline hub. When a low happiness score is detected, it triggers the ASR-PRO via interrupt.
-    * **Relax Mode:** Upon trigger, the ASR-PRO autonomously orchestrates an ambient response—activating breathing-light patterns, playing calming audio, and adjusting servos.
+    * **ASR-PRO Module:** Primary offline voice recognition engine and actuator controller.
+    * **Sentiment Gateway (Second ESP32):** Bridges cloud data to the offline hub. Triggers "Relax Mode" via interrupt when stress is detected.
+    * **Relax Mode:** Autonomously orchestrates ambient responses (breathing lights, calming audio, servo movement).
 
 ## 3. Hardware & Wiring
 
@@ -146,16 +146,26 @@ The project is built on a high-performance, real-time **Publish/Subscribe (Pub/S
     python3 -m venv venv
     source venv/bin/activate
     
-    # Install Python libraries (Includes new Google AI dependency)
-    pip install flask paho-mqtt pandas scikit-learn joblib numpy tensorflow requests google-generativeai
+    # Install Python libraries
+    # Includes google-generativeai for AI and python-dotenv for security
+    pip install flask paho-mqtt pandas scikit-learn joblib numpy tensorflow requests google-generativeai python-dotenv
     
     # Train Model
     python train_model.py 
     ```
 
-7.  **API Key Configuration:**
-    * Ensure your `server.py` contains a valid `GOOGLE_API_KEY`.
-    * Ensure the `ai_model` in `server.py` is set to `gemini-2.0-flash`.
+7.  **Secure Configuration (.env):**
+    *   **Do not hardcode API keys.** Create a `.env` file in the project directory:
+        ```bash
+        nano .env
+        ```
+    *   Add your keys inside:
+        ```ini
+        GOOGLE_API_KEY=your_gemini_api_key_here
+        TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+        TELEGRAM_CHAT_ID=your_chat_id_here
+        ```
+    *   Save and exit (`Ctrl+O`, `Enter`, `Ctrl+X`).
 
 ### B. ESP32 Devices (Local)
 
@@ -167,7 +177,7 @@ The project is built on a high-performance, real-time **Publish/Subscribe (Pub/S
 
 1.  Create a bot via **BotFather** on Telegram.
 2.  Get **Bot Token** and **Chat ID**.
-3.  Update `BOT_TOKEN` and `CHAT_ID` in `server.py`.
+3.  Add them to your `.env` file as shown above.
 
 ---
 
@@ -182,7 +192,8 @@ The project is built on a high-performance, real-time **Publish/Subscribe (Pub/S
 2.  **Power On Devices:**
     * Power on ESP32s. Check Serial Monitor (115200 baud) for connection status.
 
-3.  **View the Web UI:**
+3.  **View the Dashboard V2.0:**
     * Go to **`http://[your_droplet_ip]:5000`**
-    * **New:** Click the **"Stress / Advice"** card to view the AI-generated wellness tip in a popup modal.
-    * **New:** Use the **24h / 7 Days** buttons on the chart to toggle history views.
+    * Observe the **Emo-Avatar** changing expression based on real-time data.
+    * Check the **Live Status Pulse** (Green = Online, Red = Offline).
+    * Click the **"AI Coach"** card to view personalized advice.
